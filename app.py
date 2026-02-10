@@ -1,178 +1,254 @@
 import streamlit as st
 import google.generativeai as genai
-import time
-import re
 from io import BytesIO
 from docx import Document
 from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from google.api_core import exceptions
 
-# --- 1. НАСТРОЙКИ СИСТЕМЫ ---
-st.set_page_config(page_title="Методист PRO: Адаптация", layout="wide")
+# --- 1. НАСТРОЙКИ ---
+st.set_page_config(page_title="Методист PRO", layout="wide")
 
-# Инициализация хранилища (чтобы данные не пропадали при скачивании)
-if 'docx_buffer' not in st.session_state:
-    st.session_state.docx_buffer = None
-if 'generated_text' not in st.session_state:
-    st.session_state.generated_text = ""
-if 'file_name' not in st.session_state:
-    st.session_state.file_name = "document.docx"
-
-# Проверка API ключа
-if "GOOGLE_API_KEY" in st.secrets:
-    MY_API_KEY = st.secrets["GOOGLE_API_KEY"]
-    genai.configure(api_key=MY_API_KEY)
-else:
-    st.error("🚨 Ключ API не найден в настройках Secrets!")
-    st.stop()
+MY_API_KEY = st.secrets["GOOGLE_API_KEY"]
+MODEL_NAME = 'gemini-flash-latest'
 
 def load_ai():
     try:
-        for m_name in ['gemini-1.5-flash', 'gemini-pro']:
-            try: return genai.GenerativeModel(m_name)
-            except: continue
-    except: pass
-    return None
+        genai.configure(api_key=MY_API_KEY)
+        return genai.GenerativeModel(MODEL_NAME)
+    except Exception as e:
+        st.error(f"Ошибка подключения к ИИ: {e}")
+        return None
 
 model = load_ai()
 
-# --- 2. БАЗА ПРЕДМЕТОВ ---
-SUBJECTS_DB = {
-    "Языки и Литература": ["Русский язык (Я1)", "Русский язык (Я2)", "Қазақ тілі (Т1)", "Қазақ тілі (Т2)", "Английский язык", "Литература"],
-    "Мат / Ест / Инф": ["Математика", "Алгебра", "Геометрия", "Информатика", "Физика", "Химия", "Биология", "География"],
-    "Начальная школа": ["Математика (Нач)", "Познание мира", "Естествознание (Нач)", "Ана тілі", "Көркем еңбек"]
-}
-
-# --- 3. ОЧИСТКА ТЕКСТА ---
-def clean_content(text):
-    text = text.replace('**', '').replace('###', '').replace('##', '').replace('#', '').replace('*', '')
-    stop_phrases = ["роль:", "задача:", "конечно", "вот ваш", "тип материала:", "инструкция"]
-    lines = text.split('\n')
-    final_lines = []
-    for line in lines:
-        clean_line = line.strip()
-        if not clean_line or any(p in clean_line.lower() for p in stop_phrases): continue
-        final_lines.append(clean_line)
-    return final_lines
-
-# --- 4. WORD ЭКСПОРТ ---
-def save_to_docx(lines, title, subj, grade, teacher, max_score, doc_type, student_name="", variant=1, is_low_mot=False):
+# --- 2. ФУНКЦИИ ДЛЯ WORD ---
+def create_worksheet(text, title, subj, gr, teacher, max_score, is_sor, std_name=""):
     doc = Document()
     style = doc.styles['Normal']
     style.font.name = 'Times New Roman'
     style.font.size = Pt(12)
 
-    # Шапка
-    h_text = "БЖБ / СОЧ" if doc_type == "SOR" else ("ТЕСТ" if doc_type == "TEST" else "ЖҰМЫС ПАРАҒЫ")
-    if is_low_mot: h_text += " (Адаптивті)"
+    # --- 3. ФУНКЦИЯ БЕЗОПАСНОЙ ГЕНЕРАЦИИ ---
+def generate_safe(prompt_text):
+    max_retries = 3
+    for attempt in range(max_retries):
+        try:
+            return model.generate_content(prompt_text)
+        except exceptions.ResourceExhausted:
+            time.sleep(10)
+            continue
+        except Exception:
+            time.sleep(2)
+    return None
+    
+    # Тип документа
+    doc_type = "СОЧ / СОР (Суммативное оценивание)" if is_sor else "Жұмыс парағы / Рабочий лист"
 
-    table = doc.add_table(rows=2, cols=2)
-    table.columns[0].width = Inches(4.5)
-    table.cell(0, 0).text = f"Оқушы / Ученик: {student_name if student_name else '____________________'}"
-    table.cell(1, 0).text = f"Пән: {subj} | Сынып: {grade}"
-    table.cell(0, 1).text = f"Дата: ________ | Вар: {variant}"
-    table.cell(1, 1).text = f"Макс. балл: {max_score}"
+    # Шапка
+    header_table = doc.add_table(rows=2, cols=2)
+    header_table.columns[0].width = Inches(4.5)
+    
+    header_table.cell(0, 0).text = f"Оқушы / Ученик: {std_name if std_name else '____________________'}"
+    header_table.cell(1, 0).text = f"Пән / Предмет: {subj} | Класс: {gr}"
+    
+    r1 = header_table.cell(0, 1)
+    r1.text = "Дата: ____.____.202__"
+    r1.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    
+    # Отображение балла
+    score_text = f"Балл: ___ / {max_score}" if is_sor else "Баға / Оценка: _____"
+    r2 = header_table.cell(1, 1)
+    r2.text = f"{doc_type}\n{score_text}"
+    r2.paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.RIGHT
 
     doc.add_paragraph()
+
+    # Заголовок
     h = doc.add_heading(title.upper(), 0)
     h.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    for run in h.runs:
-        run.font.name = 'Times New Roman'; run.font.color.rgb = RGBColor(0,0,0); run.font.size = Pt(14); run.bold = True
+    for run in h.runs: 
+        run.font.name = 'Times New Roman'
+        run.font.color.rgb = RGBColor(0,0,0)
+        run.font.size = Pt(14)
 
+    # Обработка текста
+    lines = text.split('\n')
     for line in lines:
-        if line.startswith('|') and "---" not in line:
-            cells = [c.strip() for c in line.split('|') if c.strip()]
+        row = line.strip()
+        clean = row.replace('**', '').replace('###', '').replace('##', '').replace('#', '').strip()
+        
+        # Таблицы (Критерии)
+        if row.startswith('|') and '---' not in row:
+            cells = [c.strip() for c in row.split('|') if c.strip()]
             if cells:
-                tbl = doc.add_table(rows=1, cols=len(cells)); tbl.style = 'Table Grid'
-                for j, val in enumerate(cells): tbl.cell(0, j).text = val
+                tbl = doc.add_table(rows=1, cols=len(cells))
+                tbl.style = 'Table Grid'
+                for j, c_text in enumerate(cells):
+                    tbl.cell(0, j).text = c_text
+                    for p in tbl.cell(0, j).paragraphs:
+                        for r in p.runs: r.font.name = 'Times New Roman'; r.font.size = Pt(10)
             continue
-        p = doc.add_paragraph(line)
-        if any(line.lower().startswith(s) for s in ["задание", "тапсырма", "1.", "вопрос"]):
+        
+        if not clean: continue
+        
+        # Текст
+        p = doc.add_paragraph(clean)
+        
+        # Жирный шрифт для заданий
+        if any(clean.startswith(s) for s in ["Задание", "Тапсырма", "Task", "1.", "2.", "3.", "Текст"]):
             p.bold = True
-            if doc_type == "SOR": doc.add_paragraph("Жауабы: " + "_"*50)
+            
+        # Линии для ответа
+        if is_sor and any(clean.startswith(s) for s in ["1.", "2.", "3.", "Задание"]):
+             if "Текст" not in clean: 
+                pass 
 
-    if is_low_mot:
-        doc.add_paragraph("\n⭐ Рефлексия: Маған тапсырма... (Оңай/Қиын/Қызықты) _________")
-
-    doc.add_paragraph("\n" + "_"*40)
-    doc.add_paragraph(f"Мұғалім: {teacher} ____________").alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    # Подвал
+    doc.add_paragraph("\n" + "_"*45)
+    footer = doc.add_paragraph()
+    footer.add_run(f"Мұғалім: {teacher} ____________ (қолы)")
     
     buf = BytesIO(); doc.save(buf); buf.seek(0)
     return buf
+    # --- 2. УМНАЯ ОЧИСТКА ТЕКСТА ---
+def clean_worksheet_text(text):
+    """Удаляет разметку и мета-информацию ИИ"""
+    # Удаляем Markdown символы
+    text = text.replace('**', '').replace('###', '').replace('##', '').replace('#', '').replace('*', '')
+    
+    lines = text.split('\n')
+    filtered_lines = []
+    
+    # Список фраз-паразитов, которые не должны попасть в Word
+    meta_phrases = ["роль:", "задача:", "тип материала:", "конечно", "вот ваш", "вот готовый", "согласно вашему"]
+    
+    for line in lines:
+        clean_line = line.strip()
+        # Пропускаем пустые строки и строки с мета-информацией ИИ в самом начале
+        if not clean_line:
+            continue
+        if any(phrase in clean_line.lower() for phrase in meta_phrases) and len(clean_line) < 100:
+            continue
+        filtered_lines.append(clean_line)
+        
+    return filtered_lines
 
-# --- 5. ГЕНЕРАЦИЯ ---
-def generate_safe(prompt):
-    for i in range(3):
-        try: return model.generate_content(prompt)
-        except: time.sleep(2)
-    return None
-
-# --- 6. ИНТЕРФЕЙС ---
+# --- 3. ИНТЕРФЕЙС ---
 with st.sidebar:
     st.title("🇰🇿 Методист PRO")
-    t_name = st.text_input("👤 ФИО Учителя:", value="Педагог")
-    class_lang = st.radio("Язык обучения:", ["Русский", "Казахский"])
-    st.divider()
+    t_fio = st.text_input("ФИО Учителя:", value="Учитель")
     
-    st.subheader("Настройки адаптации:")
-    opt_low_mot = st.checkbox("🔥 Слабая мотивация")
+    st.subheader("Языковая программа:")
+    prog = st.selectbox("Выберите тип:", [
+        "Русский язык (Я1) - Родной", 
+        "Русский язык (Я2) - Второй", 
+        "Қазақ тілі (Т1)", "Қазақ тілі (Т2)",
+        "Математика", "Алгебра", "Геометрия", "Естествознание", "Биология", "История"
+    ])
     
     st.divider()
-    st.subheader("Тип материала:")
-    opt_work = st.checkbox("Рабочий лист", value=True)
-    opt_sor = st.checkbox("СОР / СОЧ")
-    opt_audit = st.checkbox("Аудирование")
-    opt_func = st.checkbox("МОДО")
+    st.subheader("1. Тип материала:")
+    m_work = st.checkbox("Рабочий лист (Практика)", value=True)
+    m_sor = st.checkbox("БЖБ (СОР) / ТЖБ (СОЧ) - Контроль")
+    
+    st.subheader("2. Компетенции:")
+    m_func = st.checkbox("🧠 Функциональная грамотность (МОДО)", value=True)
+    m_pisa = st.checkbox("🌍 PISA / PIRLS (Критическое мышление)")
+    m_audit = st.checkbox("🎧 Аудирование (Работа с текстом)")
 
-tab1, tab2, tab3 = st.tabs(["📚 ЗАДАНИЯ", "📝 ТЕСТЫ", "♿ ИНКЛЮЗИЯ"])
+# Вкладки
+tab1, tab2 = st.tabs(["👥 ВЕСЬ КЛАСС", "👤 РЕЗЕРВ (ИНКЛЮЗИЯ)"])
 
-# ВКЛАДКА 1
 with tab1:
     c1, c2, c3 = st.columns(3)
     with c1:
-        cat = st.selectbox("Категория:", list(SUBJECTS_DB.keys()), key="c1")
-        u_subj = st.selectbox("Предмет:", SUBJECTS_DB[cat], key="s1")
+        m_subj = st.text_input("Предмет:", key="ms")
+        m_grade = st.selectbox("Класс:", [str(i) for i in range(1, 12)], key="mg")
     with c2:
-        u_grade = st.selectbox("Класс:", [str(i) for i in range(1, 12)], key="g1")
-        u_score = st.number_input("Макс. балл:", 1, 80, 10, key="sc1")
+        m_sect = st.text_input("Раздел:", key="msc")
+        m_topic = st.text_input("Тема (Заголовок):", key="mt")
     with c3:
-        u_var = st.number_input("Вариант:", 1, 4, 1, key="v1")
-        
-    u_topic = st.text_input("Тема урока:", key="t1")
-    u_goals = st.text_area("Цели обучения (ЦО):", key="gl1")
-    u_wish = st.text_area("✍️ Особые пожелания:", key="w1")
+        m_score = st.number_input("Макс. балл (Сумма):", 1, 80, 10, key="mscr")
+    
+    m_goals = st.text_area("Цели обучения (ЦО) - ОБЯЗАТЕЛЬНО:", height=100, key="mgl", placeholder="Вставьте код цели (например, 5.1.2.1) и её описание...")
 
-    if st.button("🚀 СОЗДАТЬ МАТЕРИАЛ", use_container_width=True):
-        if not u_topic:
-            st.warning("⚠️ Введите тему урока!")
+    if st.button("🚀 Создать полный материал"):
+        if model:
+            # Сборка настроек
+            active_m = []
+            if m_work: active_m.append("Рабочий лист")
+            if m_func: active_m.append("Функциональная грамотность (анализ ситуаций)")
+            if m_pisa: active_m.append("PISA/PIRLS (международные стандарты)")
+            if m_audit: active_m.append("Аудирование")
+
+            # СОР/СОЧ
+            sor_prompt = ""
+            if m_sor:
+                sor_prompt = f"""
+                РЕЖИМ КОНТРОЛЯ (СОР/СОЧ):
+                1. Общий балл должен быть РОВНО {m_score}.
+                2. Задания должны СТРОГО проверять указанные Цели Обучения. Никаких заданий "не по теме".
+                3. Структура: Задание -> Место для ответа.
+                """
+            
+            lang_logic = "Я2 (второй язык): лексика адаптированная." if "Я2" in prog else "Я1 (родной): глубокий анализ."
+            
+            # --- ГЛАВНЫЙ ПРОМПТ С ПРИВЯЗКОЙ К ЦЕЛЯМ ---
+            prompt = f"""
+            Роль: Методист-эксперт. Тип: {prog}. Тема: {m_topic}. Класс: {m_grade}.
+            
+            ОСНОВНОЕ ТРЕБОВАНИЕ:
+            Все задания должны быть разработаны СТРОГО на основе Целей Обучения по таксономии Блума: "{m_goals}".
+            Если цель требует "анализа" — давай задание на анализ. Если "понимания" — тест.
+            Не добавляй задания, которые не относятся к этим целям.
+
+            Включи элементы: {', '.join(active_m)}.
+            {sor_prompt} {lang_logic}
+            
+            КРИТЕРИИ ОЦЕНИВАНИЯ (В КОНЦЕ ДОКУМЕНТА):
+            Создай таблицу дескрипторов. Принцип: "Один шаг = Один балл".
+            Распиши баллы подробно. Сумма должна быть равна {m_score}.
+            | Задание | Дескриптор (Обучающийся) | Балл |
+            """
+            
+            with st.spinner("Анализ целей обучения и генерация..."):
+                try:
+                    res = model.generate_content(prompt)
+                    st.markdown(res.text)
+                    doc = create_worksheet(res.text, m_topic, m_subj, m_grade, t_fio, m_score, m_sor)
+                    fname = f"SOR_{m_topic}.docx" if m_sor else f"Worksheet_{m_topic}.docx"
+                    st.download_button(f"💾 СКАЧАТЬ WORD ({m_score} б.)", data=doc, file_name=fname)
+                except Exception as e: st.error(f"Ошибка ИИ: {e}")
         else:
-            with st.spinner("ИИ генерирует и адаптирует задания..."):
-                mot_prompt = ""
-                if opt_low_mot:
-                    mot_prompt = "МЕТОДИКА ДЛЯ СЛАБОМОТИВИРОВАННЫХ: очень просто, с подсказками и интересными фактами."
+            st.error("Ошибка ключа.")
 
-                prompt = f"""Методист РК. Предмет: {u_subj}. Язык: {class_lang}. Класс: {u_grade}. Тема: {u_topic}. ЦО: {u_goals}. 
-                {mot_prompt} Тип: {'СОР' if opt_sor else 'Рабочий лист'}. Пожелания: {u_wish}.
-                БЕЗ Markdown. Баллы: {u_score}. В конце таблица критериев."""
-                
-                res = generate_safe(prompt)
-                if res:
-                    st.session_state.generated_text = res.text
-                    clean = clean_content(res.text)
-                    st.session_state.docx_buffer = save_to_docx(clean, u_topic, u_subj, u_grade, t_name, u_score, "SOR" if opt_sor else "WORK", variant=u_var, is_low_mot=opt_low_mot)
-                    st.session_state.file_name = f"{u_subj}_{u_topic}.docx"
+with tab2:
+    st.subheader("Индивидуальная адаптация")
+    rc1, rc2, rc3 = st.columns(3)
+    with rc1:
+        r_name = st.text_input("ФИО Ученика (Резерв):", key="rn")
+        r_subj = st.text_input("Предмет:", value=m_subj, disabled=True)
+    with rc2:
+        r_topic = st.text_input("Тема:", value=m_topic, disabled=True)
+        r_score = st.number_input("Балл (Резерв):", 1, 40, 5, key="rsc")
+    with rc3:
+        r_grade = st.text_input("Класс:", value=m_grade, disabled=True)
+    
+    r_goals = st.text_area("Цели (Дубликат):", value=m_goals, disabled=True, height=100)
 
-    # Кнопка скачивания (появляется только когда файл в "сейфе")
-    if st.session_state.docx_buffer:
-        st.divider()
-        st.success("✅ Файл готов к скачиванию!")
-        st.download_button(
-            label="📥 СКАЧАТЬ WORD ДОКУМЕНТ",
-            data=st.session_state.docx_buffer,
-            file_name=st.session_state.file_name,
-            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            use_container_width=True
-        )
-        with st.expander("👀 Предварительный просмотр текста"):
-            st.write(st.session_state.generated_text)
+    if st.button("🪄 Адаптировать под цели для резерва"):
+        if model:
+            prompt = f"""
+            Коррекционный педагог. Адаптируй урок для ученика: {r_name}.
+            Цели обучения те же: {r_goals}, НО уровень сложности снижен.
+            Упрости формулировки, но сохрани суть цели.
+            Принцип оценивания: 1 верный ответ = 1 балл.
+            Макс балл: {r_score}.
+            """
+            with st.spinner("Адаптация по целям..."):
+                try:
+                    res = model.generate_content(prompt)
+                    st.markdown(res.text)
+                    doc = create_worksheet(res.text, f"Reserve_{r_name}", m_subj, m_grade, t_fio, r_score, False, r_name)
+                    st.download_button("📄 СКАЧАТЬ WORD (РЕЗЕРВ)", data=doc, file_name=f"Reserve_{r_name}.docx")
+                except Exception as e: st.error(f"Ошибка ИИ: {e}")
