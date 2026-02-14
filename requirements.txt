@@ -2,3 +2,4 @@ streamlit
 google-generativeai
 python-docx
 extra-streamlit-components
+st-gsheets-connection
