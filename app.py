@@ -9,7 +9,6 @@ from streamlit_gsheets import GSheetsConnection
 import datetime
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
-# Эта функция всегда должна быть первой командой Streamlit
 st.set_page_config(page_title="Methodist PRO", layout="wide", page_icon="📚")
 
 # --- ДАННЫЕ АВТОРА ---
@@ -97,8 +96,10 @@ def configure_ai():
         if not api_key:
             return None
         genai.configure(api_key=api_key)
-        # Используем 'gemini-1.5-flash-latest' для максимальной стабильности
-        return genai.GenerativeModel('gemini-1.5-flash-latest')
+        
+        # Используем базовое имя 'gemini-1.5-flash'. 
+        # Если API выдает 404 на '-latest', это имя обычно самое стабильное.
+        return genai.GenerativeModel('gemini-1.5-flash')
     except Exception as e:
         st.error(f"Ошибка ИИ: {e}")
         return None
@@ -140,6 +141,15 @@ with st.sidebar:
     with col1: st.markdown(f"[![Inst](https://img.shields.io/badge/Inst-E4405F?logo=instagram&logoColor=white)]({INSTAGRAM_URL})")
     with col2: st.markdown(f"[![WA](https://img.shields.io/badge/WA-25D366?logo=whatsapp&logoColor=white)]({WHATSAPP_URL})")
     st.caption(f"📞 {PHONE_NUMBER}")
+    
+    # Кнопка диагностики моделей (поможет если 404 повторится)
+    if st.checkbox("Диагностика ИИ"):
+        try:
+            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            st.write("Доступные модели:", available_models)
+        except:
+            st.write("Не удалось загрузить список моделей.")
+
     if st.button(get_text("exit_btn", current_lang)):
         st.session_state['auth'] = False
         st.rerun()
@@ -189,6 +199,7 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
             if cells: table_data.append(cells)
         else:
             if table_data:
+                # Рисуем таблицу
                 cols_count = len(table_data[0])
                 tbl = doc.add_table(rows=len(table_data), cols=cols_count)
                 tbl.style = 'Table Grid'
