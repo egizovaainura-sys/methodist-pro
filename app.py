@@ -8,7 +8,7 @@ import re
 from streamlit_gsheets import GSheetsConnection
 import datetime
 
-# --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
+# --- 1. НАСТРОЙКИ СТРАНИЦЫ (Должны быть в самом верху) ---
 st.set_page_config(page_title="Methodist PRO", layout="wide", page_icon="📚")
 
 # --- ДАННЫЕ АВТОРА ---
@@ -18,7 +18,7 @@ INSTAGRAM_URL = f"https://instagram.com/{INSTAGRAM_HANDLE}"
 WHATSAPP_URL = "https://wa.me/77776513022"
 PHONE_NUMBER = "+7 (777) 651-30-22"
 
-# --- 2. СЛОВАРЬ ПЕРЕВОДОВ (ПОЛНЫЙ) ---
+# --- 2. СЛОВАРЬ ПЕРЕВОДОВ ---
 TRANS = {
     "login_title": {"RU": "Вход в систему Методист PRO", "KZ": "Methodist PRO жүйесіне кіру"},
     "login_prompt": {"RU": "Введите ваш номер телефона для доступа.", "KZ": "Кіру үшін телефон нөміріңізді енгізіңіз."},
@@ -50,7 +50,7 @@ TRANS = {
     "auth_title": {"RU": "Автор", "KZ": "Автор"}
 }
 
-# --- ПОЛНЫЕ СПИСКИ ПРЕДМЕТОВ (ВОССТАНОВЛЕНЫ) ---
+# --- СПИСКИ ПРЕДМЕТОВ ---
 SUBJECTS_RU = [
     "Русский язык (Я1 - родной)", "Русский язык (Я2 - второй)", 
     "Казахский язык (Т1 - родной)", "Казахский язык (Т2 - второй)",
@@ -78,45 +78,35 @@ SUBJECTS_KZ = [
 def get_text(key, lang_code):
     return TRANS.get(key, {}).get(lang_code, key)
 
-# --- 3. АВТОРИЗАЦИЯ И ИИ ---
+# --- 3. АВТОРИЗАЦИЯ И ИИ (ИСПРАВЛЕНО) ---
 def check_access(user_phone):
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
+        # Добавляем обработку ошибок, если таблица недоступна
         df = conn.read(spreadsheet=st.secrets["gsheet_url"], ttl=0)
         clean_input = ''.join(filter(str.isdigit, str(user_phone)))
         # Предполагаем, что номера во 2-й колонке (индекс 1)
         allowed_phones = df.iloc[:, 1].astype(str).str.replace(r'\D', '', regex=True).tolist()
         return clean_input in allowed_phones
     except Exception as e: 
+        st.error(f"Ошибка проверки доступа: {e}")
         return False
 
-# !!! ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОДКЛЮЧЕНИЯ (Решает 404) !!!
 def configure_ai():
     try:
+        # Получаем ключ из secrets.toml
         api_key = st.secrets.get("GOOGLE_API_KEY")
         if not api_key:
+            st.error("API Key не найден в secrets!")
             return None
             
         genai.configure(api_key=api_key)
         
-        # Попробуем инициализировать модель через v1beta явно
-        # И используем короткое имя 'gemini-1.5-flash'
-        return genai.GenerativeModel(
-            model_name='gemini-1.5-flash'
-        )
-    except Exception as e:
-        st.error(f"Ошибка конфигурации: {e}")
-        return None
-        
-        # 3. Настраиваем библиотеку
-        genai.configure(api_key=api_key)
-        
-        # 4. Возвращаем модель. 
-        # gemini-1.5-flash — самая быстрая и стабильная для таких задач.
+        # Используем самую стабильную версию модели на данный момент
+        # gemini-1.5-flash обычно работает надежнее всего
         return genai.GenerativeModel('gemini-1.5-flash')
     except Exception as e:
-        # Выводим ошибку для отладки, если что-то пойдет не так
-        print(f"Ошибка инициализации ИИ: {e}")
+        st.error(f"Ошибка подключения к AI: {e}")
         return None
 
 # --- 4. ЛОГИКА ВХОДА ---
@@ -142,6 +132,7 @@ if not st.session_state['auth']:
     st.caption(f"Dev: {AUTHOR_NAME}")
     st.stop()
 
+# Инициализация модели после успешного входа
 model = configure_ai()
 
 # --- 5. БОКОВАЯ ПАНЕЛЬ ---
@@ -160,7 +151,7 @@ with st.sidebar:
         st.session_state['auth'] = False
         st.rerun()
 
-# --- 6. ФУНКЦИЯ WORD (ВОССТАНОВЛЕНА ПОЛНОСТЬЮ) ---
+# --- 6. ФУНКЦИЯ WORD ---
 def clean_markdown(text):
     text = re.sub(r'[*_]{1,3}', '', text)
     text = re.sub(r'^#+\s*', '', text)
@@ -396,6 +387,3 @@ with t3:
 
 st.markdown("---")
 st.markdown(f"<center>{AUTHOR_NAME} © 2026</center>", unsafe_allow_html=True)
-
-
-
