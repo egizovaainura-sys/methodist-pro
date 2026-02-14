@@ -78,38 +78,40 @@ SUBJECTS_KZ = [
 def get_text(key, lang_code):
     return TRANS.get(key, {}).get(lang_code, key)
 
-# --- 3. ФУНКЦИИ ИИ И ДОСТУПА ---
+# --- 3. ФУНКЦИИ ДОСТУПА И ИИ (ИСПРАВЛЕНЫ) ---
+
 def check_access(user_phone):
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
         df = conn.read(spreadsheet=st.secrets["gsheet_url"], ttl=0)
         clean_input = ''.join(filter(str.isdigit, str(user_phone)))
-        # Поиск по второй колонке
+        # Удаляем нецифровые символы из колонки с номерами в таблице
         allowed_phones = df.iloc[:, 1].astype(str).str.replace(r'\D', '', regex=True).tolist()
         return clean_input in allowed_phones
     except Exception: 
         return False
 
 def configure_ai():
-    """Настройка Gemini с проверкой модели"""
+    """Настройка ИИ с защитой от 404 и NameError"""
     if "GOOGLE_API_KEY" not in st.secrets:
-        st.error("Ошибка: GOOGLE_API_KEY не найден!")
+        st.error("Критическая ошибка: GOOGLE_API_KEY не найден в Secrets!")
         return None
+    
     try:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-        # Используем современное название модели
+        # Пытаемся запустить 1.5 Flash (самое надежное имя)
         model = genai.GenerativeModel('gemini-1.5-flash')
-        # Тест на доступность (минимальный запрос)
+        # Проверочный вызов, чтобы сразу отловить 404
         model.generate_content("ping", generation_config={"max_output_tokens": 1})
         return model
     except Exception as e:
-        st.warning(f"Ошибка ИИ (Flash 1.5): {e}. Пробую gemini-pro...")
+        st.warning(f"Flash 1.5 недоступен, пробую Pro: {e}")
         try:
             return genai.GenerativeModel('gemini-pro')
-        except:
+        except Exception:
             return None
 
-# --- 4. ЛОГИКА ВХОДА ---
+# --- 4. ЛОГИКА ВХОДА И ИНИЦИАЛИЗАЦИЯ ---
 if 'lang' not in st.session_state: st.session_state['lang'] = 'RU'
 if 'auth' not in st.session_state: st.session_state['auth'] = False
 
@@ -130,10 +132,10 @@ if not st.session_state['auth']:
             else: 
                 st.error(get_text("access_denied", current_lang))
     st.divider()
-    st.caption(f"Разработчик: {AUTHOR_NAME}")
+    st.caption(f"Dev: {AUTHOR_NAME}")
     st.stop()
 
-# Инициализируем модель после авторизации
+# ВАЖНО: Определяем модель ТОЛЬКО ПОСЛЕ авторизации
 model = configure_ai()
 
 # --- 5. БОКОВАЯ ПАНЕЛЬ ---
@@ -149,19 +151,19 @@ with st.sidebar:
     with col2: st.markdown(f"[![WA](https://img.shields.io/badge/WA-25D366?logo=whatsapp&logoColor=white)]({WHATSAPP_URL})")
     st.caption(f"📞 {PHONE_NUMBER}")
     
-    with st.expander("🛠 Диагностика"):
-        if st.button("Проверить доступные модели"):
+    with st.expander("🛠 Диагностика ИИ"):
+        if st.button("Проверить список моделей"):
             try:
                 ms = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
                 st.write(ms)
             except Exception as e:
-                st.write(f"Ошибка API: {e}")
+                st.write(f"Ошибка: {e}")
 
     if st.button(get_text("exit_btn", current_lang)):
         st.session_state['auth'] = False
         st.rerun()
 
-# --- 6. ФУНКЦИИ WORD (ПОЛНАЯ ЛОГИКА ТАБЛИЦ) ---
+# --- 6. ФУНКЦИИ WORD (ПОЛНЫЙ КОД С ТАБЛИЦАМИ) ---
 def clean_markdown(text):
     text = re.sub(r'[*_]{1,3}', '', text)
     text = re.sub(r'^#+\s*', '', text)
@@ -256,7 +258,7 @@ with c_d1:
 t1, t2, t3 = st.tabs([get_text("tab_class", current_lang), get_text("tab_inc", current_lang), get_text("tab_ksp", current_lang)])
 subj_list = SUBJECTS_KZ if current_lang == "KZ" else SUBJECTS_RU
 
-# === ВКЛАДКА 1: СОР/СОЧ ===
+# === ВКЛАДКА 1: СОР/СОЧ/ЗАДАНИЯ ===
 with t1:
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -273,30 +275,33 @@ with t1:
 
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_t1"):
         if not m_goals.strip(): st.warning("Нет целей!")
-        elif model is None: st.error("ИИ недоступен. Проверьте диагностику в боковой панели.")
+        elif model is None: st.error("ИИ недоступен. Проверьте API ключ в Secrets.")
         else:
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
-            prompt = f"Ты методист. {lang_instr}. Создай {m_type} для {m_grade} класса. Тема: {m_topic}. Цели: {m_goals}. Макс балл: {m_score}. "
-            if use_pisa: prompt += "Включи задания PISA. "
-            prompt += "ОБЯЗАТЕЛЬНО сделай таблицу критериев и ответов."
-            
-            with st.spinner("Создаю задания..."):
+            pisa_instr = "Включи задания PISA." if use_pisa else ""
+            prompt = f"""
+            Ты методист. {lang_instr}.
+            Создай: {m_type}. Предмет: {m_subj}. Класс: {m_grade}. Тема: {m_topic}.
+            Цели: {m_goals}. Макс балл: {m_score}. {pisa_instr}
+            СТРУКТУРА: Задания разного уровня, Таблица дескрипторов, Ответы.
+            """
+            with st.spinner("Генерация..."):
                 try:
                     res = model.generate_content(prompt)
                     st.markdown(res.text)
                     doc = create_docx(res.text, m_topic, m_subj, m_grade, t_fio, current_lang, date_str)
-                    st.download_button(get_text("download_btn", current_lang), doc, f"{m_topic}.docx")
+                    st.download_button(get_text("download_btn", current_lang), doc, file_name=f"Task_{m_topic}.docx")
                 except Exception as e: st.error(f"Ошибка: {e}")
 
 # === ВКЛАДКА 2: ИНКЛЮЗИЯ ===
 with t2:
-    st.info("Адаптация заданий для учеников с ООП")
+    st.info("Адаптация для ООП")
     ic1, ic2 = st.columns(2)
     with ic1:
         i_name = st.text_input("Имя ученика:", key="i_n")
-        i_diag = st.text_input("Диагноз / Особенности:", key="i_d")
+        i_diag = st.text_input("Диагноз:", placeholder="ЗПР, нарушение зрения...", key="i_d")
     with ic2:
-        i_topic = st.text_input("Тема (из вкладки 1):", value=m_topic, key="i_t")
+        i_topic = st.text_input("Тема:", value=m_topic, key="i_t")
         i_goals = st.text_area("Цели:", value=m_goals, height=100, key="i_g")
 
     if st.button("🧩 Адаптировать", type="primary", key="btn_t2"):
@@ -308,10 +313,10 @@ with t2:
                     res = model.generate_content(prompt)
                     st.markdown(res.text)
                     doc = create_docx(res.text, f"ООП_{i_name}", m_subj, m_grade, t_fio, current_lang, date_str, False, i_name)
-                    st.download_button(get_text("download_btn", current_lang), doc, f"Inclusion_{i_name}.docx")
+                    st.download_button(get_text("download_btn", current_lang), doc, file_name=f"Inc_{i_name}.docx")
                 except Exception as e: st.error(f"Ошибка: {e}")
 
-# === ВКЛАДКА 3: КСП ===
+# === ВКЛАДКА 3: КСП (130 ПРИКАЗ) ===
 with t3:
     k1, k2 = st.columns(2)
     with k1:
@@ -329,15 +334,18 @@ with t3:
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_ksp"):
         if model and k_om:
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
-            prompt = f"Составь КСП (приказ 130). {lang_instr}. Тема: {k_topic}, Класс: {k_grade}, ЦО: {k_om}. Сделай таблицу: Этап | Педагог | Ученик | Оценивание."
-            if use_inc_ksp: prompt += " Добавь столбец с адаптацией для ООП."
-            
-            with st.spinner("Планирование урока..."):
+            prompt = f"""
+            Ты методист (Казахстан, приказ 130). {lang_instr}.
+            Составь КСП. Тема: {k_topic}, Класс: {k_grade}, ЦО: {k_om}.
+            Сделай таблицу: Этап урока | Педагог | Ученик | Оценивание | Ресурсы.
+            """
+            if use_inc_ksp: prompt += " Добавь адаптацию для ООП."
+            with st.spinner("Планирование..."):
                 try:
                     res = model.generate_content(prompt)
                     st.markdown(res.text)
                     doc = create_docx(res.text, f"КСП_{k_topic}", k_subj, k_grade, t_fio, current_lang, date_str, True)
-                    st.download_button(get_text("download_btn", current_lang), doc, f"KSP_{k_topic}.docx")
+                    st.download_button(get_text("download_btn", current_lang), doc, file_name=f"KSP_{k_topic}.docx")
                 except Exception as e: st.error(f"Ошибка: {e}")
 
 st.markdown("---")
