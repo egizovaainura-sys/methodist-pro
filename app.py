@@ -8,7 +8,8 @@ import re
 from streamlit_gsheets import GSheetsConnection
 import datetime
 
-# --- 1. НАСТРОЙКИ СТРАНИЦЫ (Должны быть в самом верху) ---
+# --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
+# Эта функция всегда должна быть первой командой Streamlit
 st.set_page_config(page_title="Methodist PRO", layout="wide", page_icon="📚")
 
 # --- ДАННЫЕ АВТОРА ---
@@ -18,7 +19,7 @@ INSTAGRAM_URL = f"https://instagram.com/{INSTAGRAM_HANDLE}"
 WHATSAPP_URL = "https://wa.me/77776513022"
 PHONE_NUMBER = "+7 (777) 651-30-22"
 
-# --- 2. СЛОВАРЬ ПЕРЕВОДОВ ---
+# --- 2. СЛОВАРЬ ПЕРЕВОДОВ (ПОЛНЫЙ) ---
 TRANS = {
     "login_title": {"RU": "Вход в систему Методист PRO", "KZ": "Methodist PRO жүйесіне кіру"},
     "login_prompt": {"RU": "Введите ваш номер телефона для доступа.", "KZ": "Кіру үшін телефон нөміріңізді енгізіңіз."},
@@ -50,7 +51,7 @@ TRANS = {
     "auth_title": {"RU": "Автор", "KZ": "Автор"}
 }
 
-# --- СПИСКИ ПРЕДМЕТОВ ---
+# --- ПОЛНЫЕ СПИСКИ ПРЕДМЕТОВ ---
 SUBJECTS_RU = [
     "Русский язык (Я1 - родной)", "Русский язык (Я2 - второй)", 
     "Казахский язык (Т1 - родной)", "Казахский язык (Т2 - второй)",
@@ -78,35 +79,28 @@ SUBJECTS_KZ = [
 def get_text(key, lang_code):
     return TRANS.get(key, {}).get(lang_code, key)
 
-# --- 3. АВТОРИЗАЦИЯ И ИИ (ИСПРАВЛЕНО) ---
+# --- 3. АВТОРИЗАЦИЯ И ИИ ---
 def check_access(user_phone):
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        # Добавляем обработку ошибок, если таблица недоступна
         df = conn.read(spreadsheet=st.secrets["gsheet_url"], ttl=0)
         clean_input = ''.join(filter(str.isdigit, str(user_phone)))
         # Предполагаем, что номера во 2-й колонке (индекс 1)
         allowed_phones = df.iloc[:, 1].astype(str).str.replace(r'\D', '', regex=True).tolist()
         return clean_input in allowed_phones
     except Exception as e: 
-        st.error(f"Ошибка проверки доступа: {e}")
         return False
 
 def configure_ai():
     try:
-        # Получаем ключ из secrets.toml
         api_key = st.secrets.get("GOOGLE_API_KEY")
         if not api_key:
-            st.error("API Key не найден в secrets!")
             return None
-            
         genai.configure(api_key=api_key)
-        
-        # Используем самую стабильную версию модели на данный момент
-        # gemini-1.5-flash обычно работает надежнее всего
-        return genai.GenerativeModel('gemini-1.5-flash')
+        # Используем 'gemini-1.5-flash-latest' для максимальной стабильности
+        return genai.GenerativeModel('gemini-1.5-flash-latest')
     except Exception as e:
-        st.error(f"Ошибка подключения к AI: {e}")
+        st.error(f"Ошибка ИИ: {e}")
         return None
 
 # --- 4. ЛОГИКА ВХОДА ---
@@ -132,7 +126,6 @@ if not st.session_state['auth']:
     st.caption(f"Dev: {AUTHOR_NAME}")
     st.stop()
 
-# Инициализация модели после успешного входа
 model = configure_ai()
 
 # --- 5. БОКОВАЯ ПАНЕЛЬ ---
@@ -151,7 +144,7 @@ with st.sidebar:
         st.session_state['auth'] = False
         st.rerun()
 
-# --- 6. ФУНКЦИЯ WORD ---
+# --- 6. ФУНКЦИЯ WORD (ПОЛНАЯ ЛОГИКА ТАБЛИЦ) ---
 def clean_markdown(text):
     text = re.sub(r'[*_]{1,3}', '', text)
     text = re.sub(r'^#+\s*', '', text)
@@ -164,7 +157,6 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
     font.name = 'Times New Roman'
     font.size = Pt(11)
     
-    # Шапка
     labels = {
         "RU": {"student": "Ученик", "subj": "Предмет", "class": "Класс", "date": "Дата"},
         "KZ": {"student": "Оқушы", "subj": "Пән", "class": "Сынып", "date": "Күні"}
@@ -197,7 +189,6 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
             if cells: table_data.append(cells)
         else:
             if table_data:
-                # Рисуем таблицу (с защитой от ошибок)
                 cols_count = len(table_data[0])
                 tbl = doc.add_table(rows=len(table_data), cols=cols_count)
                 tbl.style = 'Table Grid'
@@ -206,7 +197,7 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
                     for j in range(safe_cols):
                         cell = tbl.cell(i, j)
                         cell.text = clean_markdown(row[j])
-                        if i == 0: # Жирный заголовок
+                        if i == 0:
                             for p in cell.paragraphs:
                                 for r in p.runs: r.font.bold = True
                 table_data = []
@@ -215,12 +206,10 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
             clean_line = clean_markdown(stripped)
             if clean_line:
                 p = doc.add_paragraph(clean_line)
-                # Жирный шрифт для ключевых слов
                 keywords = ["задание", "тапсырма", "этап", "кезең", "критерии", "дескриптор", "ресурсы", "ответы", "жауаптар"]
                 if any(clean_line.lower().startswith(x) for x in keywords):
                     if p.runs: p.runs[0].bold = True
 
-    # Если таблица в конце
     if table_data:
         cols_count = len(table_data[0])
         tbl = doc.add_table(rows=len(table_data), cols=cols_count)
@@ -242,7 +231,6 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
 # --- 7. ЦЕНТРАЛЬНАЯ ПАНЕЛЬ ---
 st.title("🇰🇿 Methodist PRO")
 
-# Глобальная дата
 c_d1, c_d2 = st.columns([1, 4])
 with c_d1:
     sel_date = st.date_input(get_text("date_label", current_lang), datetime.date.today())
@@ -262,7 +250,6 @@ with t1:
         m_type = st.radio(get_text("mat_type", current_lang), [get_text("type_work", current_lang), get_text("type_sor", current_lang)], key="t1_type")
     with c3:
         m_score = st.number_input(get_text("score_label", current_lang), 1, 80, 10, key="t1_sc")
-        # ГАЛОЧКА PISA
         use_pisa = st.checkbox(get_text("func_lit", current_lang), key="t1_pisa")
         
     m_goals = st.text_area(get_text("goals_label", current_lang), height=100, key="t1_gl")
@@ -338,12 +325,10 @@ with t3:
     st.markdown("---")
     c_k1, c_k2 = st.columns(2)
     with c_k1:
-        # ИНКЛЮЗИЯ В КСП
         use_inc = st.checkbox(get_text("inc_check", current_lang), key="k_inc_check")
         if use_inc:
             k_inc_desc = st.text_input(get_text("inc_diag", current_lang), placeholder="Пример: ЗПР", key="k_inc_inp")
     with c_k2:
-        # PISA В КСП
         use_pisa_ksp = st.checkbox(get_text("func_lit", current_lang) + " (в КСП)", key="k_pisa_ksp")
 
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_ksp"):
@@ -351,8 +336,6 @@ with t3:
         elif model is None: st.error("Ошибка: ИИ модель не настроена.")
         else:
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
-            
-            # Формируем структуру таблицы
             inc_col_header = ""
             inc_prompt = ""
             if use_inc:
