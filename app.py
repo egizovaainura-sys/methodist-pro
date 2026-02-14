@@ -2,7 +2,7 @@ import streamlit as st
 import google.generativeai as genai
 from io import BytesIO
 from docx import Document
-from docx.shared import Pt, RGBColor, Inches
+from docx.shared import Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import re
 from streamlit_gsheets import GSheetsConnection
@@ -83,16 +83,26 @@ def check_access(user_phone):
         conn = st.connection("gsheets", type=GSheetsConnection)
         df = conn.read(spreadsheet=st.secrets["gsheet_url"], ttl=0)
         clean_input = ''.join(filter(str.isdigit, str(user_phone)))
+        # Предполагаем, что номера во 2-й колонке
         allowed_phones = df.iloc[:, 1].astype(str).str.replace(r'\D', '', regex=True).tolist()
         return clean_input in allowed_phones
-    except: return False
+    except Exception as e:
+        # Для отладки можно распечатать ошибку в консоль
+        print(f"Auth Error: {e}") 
+        return False
 
 def configure_ai():
     try:
-        api_key = st.secrets["GOOGLE_API_KEY"]
+        api_key = st.secrets.get("GOOGLE_API_KEY")
+        if not api_key:
+            st.error("Google API Key не найден в Secrets!")
+            return None
         genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-1.5-flash')
-    except: return None
+        # ИСПРАВЛЕНИЕ: Используем 'gemini-1.5-flash-latest' или 'gemini-pro' для стабильности
+        return genai.GenerativeModel('gemini-1.5-flash-latest')
+    except Exception as e:
+        st.error(f"Ошибка подключения к AI: {e}")
+        return None
 
 # --- 4. ЛОГИКА ВХОДА ---
 if 'lang' not in st.session_state: st.session_state['lang'] = 'RU'
@@ -117,6 +127,7 @@ if not st.session_state['auth']:
     st.caption(f"Dev: {AUTHOR_NAME}")
     st.stop()
 
+# Инициализация модели один раз при загрузке
 model = configure_ai()
 
 # --- 5. БОКОВАЯ ПАНЕЛЬ ---
@@ -125,7 +136,7 @@ with st.sidebar:
     st.success(get_text('status_active', current_lang))
     t_fio = st.text_input(get_text("teacher_fio", current_lang), value="Teacher")
     st.divider()
-    st.markdown(f"### 👩‍💻 {get_text('auth_title', current_lang)}")
+    st.markdown(f"### 👩‍💻 {get_text('auth_title', current_lang) if 'auth_title' in TRANS else 'Автор'}") # Защита от отсутствия ключа
     st.info(f"**{AUTHOR_NAME}**")
     col1, col2 = st.columns(2)
     with col1: st.markdown(f"[![Inst](https://img.shields.io/badge/Inst-E4405F?logo=instagram&logoColor=white)]({INSTAGRAM_URL})")
@@ -186,10 +197,11 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
                 tbl = doc.add_table(rows=len(table_data), cols=cols_count)
                 tbl.style = 'Table Grid'
                 for i, row in enumerate(table_data):
-                    if len(row) != cols_count: continue
-                    for j, val in enumerate(row):
+                    # Безопасное заполнение: если колонок в строке меньше, пропускаем или заполняем пустые
+                    safe_cols = min(len(row), cols_count)
+                    for j in range(safe_cols):
                         cell = tbl.cell(i, j)
-                        cell.text = clean_markdown(val)
+                        cell.text = clean_markdown(row[j])
                         if i == 0: # Жирный заголовок
                             for p in cell.paragraphs:
                                 for r in p.runs: r.font.bold = True
@@ -202,7 +214,7 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
                 # Жирный шрифт для ключевых слов
                 keywords = ["задание", "тапсырма", "этап", "кезең", "критерии", "дескриптор", "ресурсы", "ответы", "жауаптар"]
                 if any(clean_line.lower().startswith(x) for x in keywords):
-                    p.runs[0].bold = True
+                    if p.runs: p.runs[0].bold = True
 
     # Если таблица в конце
     if table_data:
@@ -210,9 +222,9 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
         tbl = doc.add_table(rows=len(table_data), cols=cols_count)
         tbl.style = 'Table Grid'
         for i, row in enumerate(table_data):
-            if len(row) != cols_count: continue
-            for j, val in enumerate(row):
-                tbl.cell(i, j).text = clean_markdown(val)
+            safe_cols = min(len(row), cols_count)
+            for j in range(safe_cols):
+                tbl.cell(i, j).text = clean_markdown(row[j])
 
     doc.add_paragraph("\n" + "_"*30)
     doc.add_paragraph(f"{'Мұғалім' if lang_code=='KZ' else 'Учитель'}: {teacher}")
@@ -253,6 +265,7 @@ with t1:
 
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_t1"):
         if not m_goals.strip(): st.warning("Нет целей!")
+        elif model is None: st.error("Ошибка: ИИ модель не настроена (проверьте API ключ).") # ПРОВЕРКА
         else:
             lang_instr = "Пиши на КАЗАХСКОМ языке" if current_lang == "KZ" else "Пиши на РУССКОМ языке"
             pisa_instr = "Включи задания на функциональную грамотность (PISA)." if use_pisa else ""
@@ -289,6 +302,7 @@ with t2:
 
     if st.button("🧩 Адаптировать / Бейімдеу", type="primary", key="btn_t2"):
         if not i_goals: st.warning("Нет целей!")
+        elif model is None: st.error("Ошибка: ИИ модель не настроена.") # ПРОВЕРКА
         else:
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
             prompt = f"""
@@ -330,6 +344,7 @@ with t3:
 
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_ksp"):
         if not k_om.strip(): st.warning("Нет целей!")
+        elif model is None: st.error("Ошибка: ИИ модель не настроена.") # ПРОВЕРКА
         else:
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
             
@@ -368,6 +383,3 @@ with t3:
 
 st.markdown("---")
 st.markdown(f"<center>{AUTHOR_NAME} © 2026</center>", unsafe_allow_html=True)
-
-
-
