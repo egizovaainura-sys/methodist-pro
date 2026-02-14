@@ -83,23 +83,22 @@ def check_access(user_phone):
         conn = st.connection("gsheets", type=GSheetsConnection)
         df = conn.read(spreadsheet=st.secrets["gsheet_url"], ttl=0)
         clean_input = ''.join(filter(str.isdigit, str(user_phone)))
-        # Предполагаем, что номера во 2-й колонке
+        # Номера во 2-й колонке (как в новом коде)
         allowed_phones = df.iloc[:, 1].astype(str).str.replace(r'\D', '', regex=True).tolist()
         return clean_input in allowed_phones
     except Exception as e:
-        # Для отладки можно распечатать ошибку в консоль
         print(f"Auth Error: {e}") 
         return False
 
 def configure_ai():
     try:
+        # Используем безопасный get из НОВОГО кода
         api_key = st.secrets.get("GOOGLE_API_KEY")
         if not api_key:
-            st.error("Google API Key не найден в Secrets!")
             return None
         genai.configure(api_key=api_key)
-        # ИСПРАВЛЕНИЕ: Используем 'gemini-1.5-flash-latest' или 'gemini-pro' для стабильности
-        return genai.GenerativeModel('gemini-1.5-flash-latest')
+        # Используем стабильное имя модели
+        return genai.GenerativeModel('gemini-1.5-flash')
     except Exception as e:
         st.error(f"Ошибка подключения к AI: {e}")
         return None
@@ -127,7 +126,7 @@ if not st.session_state['auth']:
     st.caption(f"Dev: {AUTHOR_NAME}")
     st.stop()
 
-# Инициализация модели один раз при загрузке
+# Инициализация модели
 model = configure_ai()
 
 # --- 5. БОКОВАЯ ПАНЕЛЬ ---
@@ -136,7 +135,7 @@ with st.sidebar:
     st.success(get_text('status_active', current_lang))
     t_fio = st.text_input(get_text("teacher_fio", current_lang), value="Teacher")
     st.divider()
-    st.markdown(f"### 👩‍💻 {get_text('auth_title', current_lang) if 'auth_title' in TRANS else 'Автор'}") # Защита от отсутствия ключа
+    st.markdown(f"### 👩‍💻 {get_text('auth_title', current_lang) if 'auth_title' in TRANS else 'Автор'}") 
     st.info(f"**{AUTHOR_NAME}**")
     col1, col2 = st.columns(2)
     with col1: st.markdown(f"[![Inst](https://img.shields.io/badge/Inst-E4405F?logo=instagram&logoColor=white)]({INSTAGRAM_URL})")
@@ -159,7 +158,7 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
     font.name = 'Times New Roman'
     font.size = Pt(11)
     
-    # Шапка
+    # Шапка (Вернул из старого кода - это важно!)
     labels = {
         "RU": {"student": "Ученик", "subj": "Предмет", "class": "Класс", "date": "Дата"},
         "KZ": {"student": "Оқушы", "subj": "Пән", "class": "Сынып", "date": "Күні"}
@@ -192,17 +191,16 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
             if cells: table_data.append(cells)
         else:
             if table_data:
-                # Рисуем таблицу
+                # Рисуем таблицу (Взял улучшенную защиту из НОВОГО кода!)
                 cols_count = len(table_data[0])
                 tbl = doc.add_table(rows=len(table_data), cols=cols_count)
                 tbl.style = 'Table Grid'
                 for i, row in enumerate(table_data):
-                    # Безопасное заполнение: если колонок в строке меньше, пропускаем или заполняем пустые
-                    safe_cols = min(len(row), cols_count)
+                    safe_cols = min(len(row), cols_count) # Защита от ошибок
                     for j in range(safe_cols):
                         cell = tbl.cell(i, j)
                         cell.text = clean_markdown(row[j])
-                        if i == 0: # Жирный заголовок
+                        if i == 0: # Жирный заголовок (Вернул из старого кода)
                             for p in cell.paragraphs:
                                 for r in p.runs: r.font.bold = True
                 table_data = []
@@ -211,12 +209,12 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
             clean_line = clean_markdown(stripped)
             if clean_line:
                 p = doc.add_paragraph(clean_line)
-                # Жирный шрифт для ключевых слов
+                # Жирный шрифт для ключевых слов (Вернул из старого кода)
                 keywords = ["задание", "тапсырма", "этап", "кезең", "критерии", "дескриптор", "ресурсы", "ответы", "жауаптар"]
                 if any(clean_line.lower().startswith(x) for x in keywords):
                     if p.runs: p.runs[0].bold = True
 
-    # Если таблица в конце
+    # Если таблица осталась в конце
     if table_data:
         cols_count = len(table_data[0])
         tbl = doc.add_table(rows=len(table_data), cols=cols_count)
@@ -258,15 +256,15 @@ with t1:
         m_type = st.radio(get_text("mat_type", current_lang), [get_text("type_work", current_lang), get_text("type_sor", current_lang)], key="t1_type")
     with c3:
         m_score = st.number_input(get_text("score_label", current_lang), 1, 80, 10, key="t1_sc")
-        # ГАЛОЧКА PISA
         use_pisa = st.checkbox(get_text("func_lit", current_lang), key="t1_pisa")
         
     m_goals = st.text_area(get_text("goals_label", current_lang), height=100, key="t1_gl")
 
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_t1"):
         if not m_goals.strip(): st.warning("Нет целей!")
-        elif model is None: st.error("Ошибка: ИИ модель не настроена (проверьте API ключ).") # ПРОВЕРКА
+        elif model is None: st.error("Ошибка: ИИ модель не настроена.") 
         else:
+            # Вернул УМНЫЙ ПРОМПТ из старого кода
             lang_instr = "Пиши на КАЗАХСКОМ языке" if current_lang == "KZ" else "Пиши на РУССКОМ языке"
             pisa_instr = "Включи задания на функциональную грамотность (PISA)." if use_pisa else ""
             
@@ -302,8 +300,9 @@ with t2:
 
     if st.button("🧩 Адаптировать / Бейімдеу", type="primary", key="btn_t2"):
         if not i_goals: st.warning("Нет целей!")
-        elif model is None: st.error("Ошибка: ИИ модель не настроена.") # ПРОВЕРКА
+        elif model is None: st.error("Ошибка: ИИ модель не настроена.")
         else:
+            # Вернул УМНЫЙ ПРОМПТ из старого кода
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
             prompt = f"""
             Ты дефектолог. {lang_instr}.
@@ -334,21 +333,19 @@ with t3:
     st.markdown("---")
     c_k1, c_k2 = st.columns(2)
     with c_k1:
-        # ИНКЛЮЗИЯ В КСП
         use_inc = st.checkbox(get_text("inc_check", current_lang), key="k_inc_check")
         if use_inc:
             k_inc_desc = st.text_input(get_text("inc_diag", current_lang), placeholder="Пример: ЗПР", key="k_inc_inp")
     with c_k2:
-        # PISA В КСП
         use_pisa_ksp = st.checkbox(get_text("func_lit", current_lang) + " (в КСП)", key="k_pisa_ksp")
 
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_ksp"):
         if not k_om.strip(): st.warning("Нет целей!")
-        elif model is None: st.error("Ошибка: ИИ модель не настроена.") # ПРОВЕРКА
+        elif model is None: st.error("Ошибка: ИИ модель не настроена.")
         else:
+            # Вернул УМНЫЙ ПРОМПТ из старого кода
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
             
-            # Формируем структуру таблицы
             inc_col_header = ""
             inc_prompt = ""
             if use_inc:
