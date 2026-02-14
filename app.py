@@ -93,13 +93,23 @@ def check_access(user_phone):
 # !!! ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОДКЛЮЧЕНИЯ (Решает 404) !!!
 def configure_ai():
     try:
-        my_api_key = st.secrets.get("GOOGLE_API_KEY")
-        MODEL_NAME = 'gemini-flash-latest'
-        if not api_key: return None
+        # 1. Получаем ключ из secrets
+        api_key = st.secrets.get("GOOGLE_API_KEY")
+        
+        # 2. Если ключа нет, выводим подсказку в консоль (или возвращаем None)
+        if not api_key:
+            return None
+        
+        # 3. Настраиваем библиотеку
         genai.configure(api_key=api_key)
-        # Используем имя модели, которое работает стабильно в 2026
+        
+        # 4. Возвращаем модель. 
+        # gemini-1.5-flash — самая быстрая и стабильная для таких задач.
         return genai.GenerativeModel('gemini-1.5-flash')
-    except: return None
+    except Exception as e:
+        # Выводим ошибку для отладки, если что-то пойдет не так
+        print(f"Ошибка инициализации ИИ: {e}")
+        return None
 
 # --- 4. ЛОГИКА ВХОДА ---
 if 'lang' not in st.session_state: st.session_state['lang'] = 'RU'
@@ -378,4 +388,5 @@ with t3:
 
 st.markdown("---")
 st.markdown(f"<center>{AUTHOR_NAME} © 2026</center>", unsafe_allow_html=True)
+
 
