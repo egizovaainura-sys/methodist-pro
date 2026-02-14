@@ -6,6 +6,7 @@ from docx.shared import Pt, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 import re
 from streamlit_gsheets import GSheetsConnection
+import datetime
 
 # --- 1. НАСТРОЙКИ СТРАНИЦЫ ---
 st.set_page_config(page_title="Methodist PRO", layout="wide", page_icon="📚")
@@ -27,6 +28,7 @@ TRANS = {
     "status_active": {"RU": "✅ Подписка PRO активна", "KZ": "✅ PRO жазылым белсенді"},
     
     "teacher_fio": {"RU": "ФИО Учителя:", "KZ": "Мұғалімнің А.Т.Ә.:"},
+    "date_label": {"RU": "Дата урока:", "KZ": "Сабақ күні:"},
     "subject_label": {"RU": "Предмет:", "KZ": "Пән:"},
     "grade_label": {"RU": "Класс:", "KZ": "Сынып:"},
     "topic_label": {"RU": "Тема урока:", "KZ": "Сабақтың тақырыбы:"},
@@ -38,18 +40,38 @@ TRANS = {
     "type_sor": {"RU": "БЖБ (СОР) / ТЖБ (СОЧ)", "KZ": "БЖБ (СОР) / ТЖБ (СОЧ)"},
     
     "tab_class": {"RU": "📝 ЗАДАНИЯ (СОР/СОЧ)", "KZ": "📝 ТАПСЫРМАЛАР (БЖБ/ТЖБ)"},
-    "tab_inc": {"RU": "👤 ИНКЛЮЗИЯ (Адаптация)", "KZ": "👤 ЕРЕКШЕ БІЛІМ (Бейімдеу)"},
+    "tab_inc": {"RU": "👤 ИНКЛЮЗИЯ (Отдельно)", "KZ": "👤 ЕРЕКШЕ БІЛІМ (Жеке)"},
     "tab_ksp": {"RU": "📖 КСП (130 приказ)", "KZ": "📖 ҚМЖ (130-бұйрық)"},
+    
+    "inc_check": {"RU": "Есть ученик с ООП (Инклюзия)?", "KZ": "Ерекше білім беру қажеттілігі бар оқушы бар ма?"},
+    "inc_diag": {"RU": "Диагноз/Особенности (для КСП):", "KZ": "Диагноз/Ерекшеліктері:"},
     
     "btn_create": {"RU": "🚀 Создать материал", "KZ": "🚀 Материал жасау"},
     "download_btn": {"RU": "💾 СКАЧАТЬ WORD", "KZ": "💾 WORD ЖҮКТЕУ"},
-    "preview": {"RU": "### Предпросмотр:", "KZ": "### Алдын ала қарау:"},
     "auth_title": {"RU": "Автор и разработчик", "KZ": "Автор және әзірлеуші"},
     "exit_btn": {"RU": "Выйти", "KZ": "Шығу"}
 }
 
-SUBJECTS_RU = ["Русский язык (Я1)", "Русский язык (Я2)", "Казахский язык (Т1)", "Казахский язык (Т2)", "Математика", "Алгебра", "Геометрия", "Физика", "Химия", "Биология", "История Казахстана", "География", "Английский язык", "Начальные классы"]
-SUBJECTS_KZ = ["Орыс тілі (Я1)", "Орыс тілі (Я2)", "Қазақ тілі (Т1)", "Қазақ тілі (Т2)", "Математика", "Алгебра", "Геометрия", "Физика", "Химия", "Биология", "Қазақстан тарихы", "География", "Ағылшын тілі", "Бастауыш сынып"]
+# --- СПИСКИ ПРЕДМЕТОВ (Добавлены новые) ---
+SUBJECTS_RU = [
+    "Русский язык", "Казахский язык", "Литературное чтение",
+    "Обучение грамоте", "Букварь", "Ана тілі",
+    "Математика", "Алгебра", "Геометрия", 
+    "Естествознание", "Познание мира", 
+    "Физика", "Химия", "Биология", "География", 
+    "История Казахстана", "Всемирная история", 
+    "Английский язык", "Начальные классы"
+]
+
+SUBJECTS_KZ = [
+    "Орыс тілі", "Қазақ тілі", "Әдебиеттік оқу",
+    "Сауат ашу", "Әліппе", "Ана тілі",
+    "Математика", "Алгебра", "Геометрия", 
+    "Жаратылыстану", "Дүниетану", 
+    "Физика", "Химия", "Биология", "География", 
+    "Қазақстан тарихы", "Дүниежүзі тарихы", 
+    "Ағылшын тілі", "Бастауыш сынып"
+]
 
 def get_text(key, lang_code):
     return TRANS.get(key, {}).get(lang_code, key)
@@ -98,7 +120,6 @@ with st.sidebar:
     st.divider()
     st.success(get_text('status_active', current_lang))
     t_fio = st.text_input(get_text("teacher_fio", current_lang), value="Teacher")
-    
     st.divider()
     st.markdown(f"### 👩‍💻 {get_text('auth_title', current_lang)}")
     st.info(f"**{AUTHOR_NAME}**")
@@ -116,12 +137,12 @@ def clean_markdown(text):
     text = re.sub(r'^#+\s*', '', text)
     return text.strip()
 
-def create_docx(ai_text, title, subj, gr, teacher, lang_code, is_ksp=False, std_name=""):
+def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=False, std_name=""):
     doc = Document()
     style = doc.styles['Normal']
     font = style.font
     font.name = 'Times New Roman'
-    font.size = Pt(12)
+    font.size = Pt(11) # Чуть меньше шрифт для таблиц
     
     # Шапка
     labels = {
@@ -135,7 +156,7 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, is_ksp=False, std_
         table = doc.add_table(rows=2, cols=2)
         table.cell(0, 0).text = f"{L['student']}: {std_name if std_name else '________________'}"
         table.cell(1, 0).text = f"{L['subj']}: {subj} | {L['class']}: {gr}"
-        table.cell(0, 1).text = f"{L['date']}: ____________"
+        table.cell(0, 1).text = f"{L['date']}: {date_str}"
         doc.add_paragraph()
 
     h = doc.add_heading(title.upper(), 0)
@@ -152,11 +173,14 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, is_ksp=False, std_
             if cells: table_data.append(cells)
         else:
             if table_data:
+                # Создаем таблицу
                 tbl = doc.add_table(rows=len(table_data), cols=len(table_data[0]))
                 tbl.style = 'Table Grid'
                 for i, row in enumerate(table_data):
                     for j, val in enumerate(row):
-                        tbl.cell(i, j).text = clean_markdown(val)
+                        cell = tbl.cell(i, j)
+                        cell.text = clean_markdown(val)
+                        # Если это КСП и включена инклюзия, и это колонка адаптации (обычно 4-я или 5-я), можно выделить цветом (опционально)
                 table_data = []
                 doc.add_paragraph()
             
@@ -174,10 +198,15 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, is_ksp=False, std_
     buf.seek(0)
     return buf
 
-# --- 7. ВКЛАДКИ (ИНТЕРФЕЙС) ---
+# --- 7. ЦЕНТРАЛЬНАЯ ПАНЕЛЬ ---
 st.title("🇰🇿 Methodist PRO")
 
-# Три вкладки: Задания, Инклюзия, КСП
+# ВЫБОР ДАТЫ (Глобально для всех вкладок)
+c_d1, c_d2 = st.columns([1, 4])
+with c_d1:
+    sel_date = st.date_input(get_text("date_label", current_lang), datetime.date.today())
+    date_str = sel_date.strftime("%d.%m.%Y")
+
 t1, t2, t3 = st.tabs([get_text("tab_class", current_lang), get_text("tab_inc", current_lang), get_text("tab_ksp", current_lang)])
 
 subj_list = SUBJECTS_KZ if current_lang == "KZ" else SUBJECTS_RU
@@ -197,7 +226,7 @@ with t1:
     m_goals = st.text_area(get_text("goals_label", current_lang), height=100, key="t1_gl")
 
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_t1"):
-        if not m_goals.strip(): st.warning("Error: No goals")
+        if not m_goals.strip(): st.warning("No goals")
         else:
             lang_instr = "Пиши на КАЗАХСКОМ языке" if current_lang == "KZ" else "Пиши на РУССКОМ языке"
             prompt = f"""
@@ -205,26 +234,26 @@ with t1:
             Создай: {m_type}. Предмет: {m_subj}. Класс: {m_grade}. Тема: {m_topic}.
             Цели: {m_goals}. Макс балл: {m_score}.
             
-            ТРЕБОВАНИЯ:
-            1. Задания разного уровня сложности.
-            2. В конце обязательно таблицу: "Критерии оценивания" и "Дескрипторы" (баллы).
-            3. Ответы (ключи).
+            СТРУКТУРА:
+            1. Задания разного уровня.
+            2. Таблица: "Критерии оценивания" и "Дескрипторы".
+            3. Ответы.
             """
-            with st.spinner("Wait..."):
+            with st.spinner("Generating..."):
                 try:
                     res = model.generate_content(prompt)
                     st.markdown(res.text)
-                    doc = create_docx(res.text, m_topic, m_subj, m_grade, t_fio, current_lang, False)
+                    doc = create_docx(res.text, m_topic, m_subj, m_grade, t_fio, current_lang, date_str, False)
                     st.download_button(get_text("download_btn", current_lang), doc, file_name=f"Task_{m_topic}.docx")
                 except Exception as e: st.error(f"Error: {e}")
 
-# === ВКЛАДКА 2: ИНКЛЮЗИЯ ===
+# === ВКЛАДКА 2: ИНКЛЮЗИЯ (ОТДЕЛЬНО) ===
 with t2:
     st.info("Адаптация для особых образовательных потребностей (ООП)")
     ic1, ic2 = st.columns(2)
     with ic1:
         i_name = st.text_input("Имя ученика / Оқушының аты:", key="i_n")
-        i_diag = st.text_input("Особенности (необязательно) / Ерекшеліктері:", placeholder="Например: ЗПР, нарушение зрения", key="i_d")
+        i_diag = st.text_input("Диагноз / Ерекшеліктері:", placeholder="Например: ЗПР, нарушение зрения", key="i_d")
     with ic2:
         i_topic = st.text_input("Тема (из первой вкладки):", value=m_topic, key="i_t")
         i_goals = st.text_area("Цели (упрощенные):", value=m_goals, height=100, key="i_g")
@@ -235,22 +264,22 @@ with t2:
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
             prompt = f"""
             Ты дефектолог. {lang_instr}.
-            Адаптируй задания по теме '{i_topic}' для ученика: {i_name}. Диагноз/Особенности: {i_diag}.
+            Адаптируй задания по теме '{i_topic}' для ученика: {i_name}. Диагноз: {i_diag}.
             Цели: {i_goals}.
-            Сделай задания проще, понятнее. Увеличь шрифт в описании (визуально).
+            Сделай задания проще. Увеличь шрифт в описании.
             Добавь таблицу оценивания.
             """
             with st.spinner("Adapting..."):
                 try:
                     res = model.generate_content(prompt)
                     st.markdown(res.text)
-                    doc = create_docx(res.text, f"Inclusion_{i_name}", m_subj, m_grade, t_fio, current_lang, False, i_name)
+                    doc = create_docx(res.text, f"Inclusion_{i_name}", m_subj, m_grade, t_fio, current_lang, date_str, False, i_name)
                     st.download_button(get_text("download_btn", current_lang), doc, file_name=f"Inc_{i_name}.docx")
                 except Exception as e: st.error(f"Error: {e}")
 
-# === ВКЛАДКА 3: КСП (130 ПРИКАЗ) ===
+# === ВКЛАДКА 3: КСП (130 ПРИКАЗ + ИНКЛЮЗИЯ) ===
 with t3:
-    st.subheader("📖 Краткосрочный план (КСП)")
+    st.subheader(get_text("tab_ksp", current_lang))
     k1, k2 = st.columns(2)
     with k1:
         k_subj = st.selectbox(get_text("subject_label", current_lang), subj_list, key="k_s")
@@ -261,29 +290,46 @@ with t3:
 
     k_om = st.text_area(get_text("goals_label", current_lang), placeholder="Код (например 5.1.2.1)...", key="k_om")
     k_sm = st.text_area(get_text("ksp_goals", current_lang), placeholder="Все учащиеся смогут...", key="k_sm")
+    
+    # --- БЛОК ИНКЛЮЗИИ В КСП ---
+    st.markdown("---")
+    use_inc = st.checkbox(get_text("inc_check", current_lang), key="k_inc_check")
+    k_inc_desc = ""
+    if use_inc:
+        k_inc_desc = st.text_input(get_text("inc_diag", current_lang), placeholder="Пример: Ученик А (ЗПР) - упрощенные задания", key="k_inc_input")
 
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_ksp"):
         if not k_om.strip(): st.warning("No goals")
         else:
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
+            
+            # Логика формирования промпта с инклюзией
+            inc_instruction = ""
+            inc_column = ""
+            if use_inc:
+                inc_instruction = f"В классе есть ученик с ООП: {k_inc_desc}. Для него ОБЯЗАТЕЛЬНО добавь отдельный столбец в таблицу с адаптированным заданием и дескриптором."
+                inc_column = "| Адаптация для ООП (Инклюзия)"
+            
             prompt = f"""
             Ты методист (Казахстан, приказ 130). {lang_instr}.
             Составь КСП. Предмет: {k_subj}. Класс: {k_grade}. Тема: {k_topic}.
             ЦО: {k_om}. Цели урока: {k_sm}. Ценности: {k_vals}.
             
+            {inc_instruction}
+            
             СТРУКТУРА ТАБЛИЦЫ (строго):
-            Этап урока | Действия педагога | Действия ученика | Оценивание | Ресурсы
+            Этап урока | Действия педагога | Действия ученика {inc_column} | Оценивание | Ресурсы
             
             Этапы:
-            1. Начало (Орг. момент, Актуализация).
-            2. Середина (Новая тема, Работа в группах/парах).
+            1. Начало (Орг. момент).
+            2. Середина (Новая тема, Практика).
             3. Конец (Рефлексия).
             """
             with st.spinner("Generating Plan..."):
                 try:
                     res = model.generate_content(prompt)
                     st.markdown(res.text)
-                    doc = create_docx(res.text, f"КСП_{k_topic}", k_subj, k_grade, t_fio, current_lang, True)
+                    doc = create_docx(res.text, f"КСП_{k_topic}", k_subj, k_grade, t_fio, current_lang, date_str, True)
                     st.download_button(get_text("download_btn", current_lang), doc, file_name=f"KSP_{k_topic}.docx")
                 except Exception as e: st.error(f"Error: {e}")
 
