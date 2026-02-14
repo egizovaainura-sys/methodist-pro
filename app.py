@@ -90,19 +90,18 @@ def check_access(user_phone):
     except Exception: 
         return False
 
-def configure_ai():
-    try:
-        api_key = st.secrets.get("GOOGLE_API_KEY")
-        if not api_key:
-            return None
-        genai.configure(api_key=api_key)
-        
-        # Самое стабильное имя модели на февраль 2026. 
-        # Если выдает 404, библиотека сама подберет версию API (v1 или v1beta).
-        return genai.GenerativeModel('gemini-1.5-flash')
-    except Exception as e:
-        st.error(f"Ошибка ИИ: {e}")
-        return None
+# Настройка ключа (берем из секретов Streamlit)
+if "GOOGLE_API_KEY" in st.secrets:
+    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+else:
+    st.error("Ошибка: Добавьте GOOGLE_API_KEY в Settings -> Secrets на Streamlit Cloud")
+
+# Создание модели с проверкой
+def get_model():
+    # Попробуем версию 'gemini-1.5-flash', она самая быстрая и стабильная
+    return genai.GenerativeModel('gemini-1.5-flash')
+
+model = get_model()
 
 # --- 4. ЛОГИКА ВХОДА ---
 if 'lang' not in st.session_state: st.session_state['lang'] = 'RU'
@@ -378,3 +377,4 @@ with t3:
 
 st.markdown("---")
 st.markdown(f"<center>{AUTHOR_NAME} © 2026</center>", unsafe_allow_html=True)
+
