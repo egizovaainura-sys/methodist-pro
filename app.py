@@ -89,15 +89,39 @@ def check_access(user_phone):
     except Exception: 
         return False
 
-# ОПРЕДЕЛЕНИЕ ФУНКЦИИ НАСТРОЙКИ ИИ (Чтобы не было NameError)
+# --- 3. АВТОРИЗАЦИЯ И ИИ (УЛУЧШЕННАЯ ВЕРСИЯ) ---
 def configure_ai():
     if "GOOGLE_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-        # Используем gemini-1.5-flash — это решит проблему 404
-        return genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Список имен модели в порядке приоритета
+        model_names = [
+            'gemini-1.5-flash',          # Стандарт
+            'gemini-1.5-flash-latest',   # Самая свежая
+            'models/gemini-1.5-flash',   # Полный путь
+            'gemini-pro'                 # Резерв (1.0)
+        ]
+        
+        for name in model_names:
+            try:
+                test_model = genai.GenerativeModel(name)
+                # Пробуем сделать микро-запрос, чтобы убедиться, что 404 не будет
+                test_model.generate_content("hi", generation_config={"max_output_tokens": 1})
+                return test_model
+            except Exception:
+                continue
+        
+        st.error("Ни одна модель Gemini не доступна. Проверьте API ключ.")
+        return None
     else:
         st.error("Критическая ошибка: GOOGLE_API_KEY не найден в Secrets!")
         return None
+
+# Инициализируем модель ОДИН РАЗ
+if st.session_state.get('auth'):
+    model = configure_ai()
+else:
+    model = None
 
 # --- 4. ЛОГИКА ВХОДА ---
 if 'lang' not in st.session_state: st.session_state['lang'] = 'RU'
@@ -373,3 +397,4 @@ with t3:
 
 st.markdown("---")
 st.markdown(f"<center>{AUTHOR_NAME} © 2026</center>", unsafe_allow_html=True)
+
