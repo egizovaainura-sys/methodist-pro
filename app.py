@@ -93,12 +93,20 @@ def check_access(user_phone):
 # !!! ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОДКЛЮЧЕНИЯ (Решает 404) !!!
 def configure_ai():
     try:
-        # 1. Получаем ключ из secrets
         api_key = st.secrets.get("GOOGLE_API_KEY")
-        
-        # 2. Если ключа нет, выводим подсказку в консоль (или возвращаем None)
         if not api_key:
             return None
+            
+        genai.configure(api_key=api_key)
+        
+        # Попробуем инициализировать модель через v1beta явно
+        # И используем короткое имя 'gemini-1.5-flash'
+        return genai.GenerativeModel(
+            model_name='gemini-1.5-flash'
+        )
+    except Exception as e:
+        st.error(f"Ошибка конфигурации: {e}")
+        return None
         
         # 3. Настраиваем библиотеку
         genai.configure(api_key=api_key)
@@ -388,5 +396,6 @@ with t3:
 
 st.markdown("---")
 st.markdown(f"<center>{AUTHOR_NAME} © 2026</center>", unsafe_allow_html=True)
+
 
 
