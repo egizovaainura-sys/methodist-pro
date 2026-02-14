@@ -84,10 +84,10 @@ def check_access(user_phone):
         conn = st.connection("gsheets", type=GSheetsConnection)
         df = conn.read(spreadsheet=st.secrets["gsheet_url"], ttl=0)
         clean_input = ''.join(filter(str.isdigit, str(user_phone)))
-        # Предполагаем, что номера во 2-й колонке (индекс 1)
+        # Номера во 2-й колонке (индекс 1)
         allowed_phones = df.iloc[:, 1].astype(str).str.replace(r'\D', '', regex=True).tolist()
         return clean_input in allowed_phones
-    except Exception as e: 
+    except Exception: 
         return False
 
 def configure_ai():
@@ -97,8 +97,8 @@ def configure_ai():
             return None
         genai.configure(api_key=api_key)
         
-        # Используем базовое имя 'gemini-1.5-flash'. 
-        # Если API выдает 404 на '-latest', это имя обычно самое стабильное.
+        # Самое стабильное имя модели на февраль 2026. 
+        # Если выдает 404, библиотека сама подберет версию API (v1 или v1beta).
         return genai.GenerativeModel('gemini-1.5-flash')
     except Exception as e:
         st.error(f"Ошибка ИИ: {e}")
@@ -133,7 +133,7 @@ model = configure_ai()
 with st.sidebar:
     st.divider()
     st.success(get_text('status_active', current_lang))
-    t_fio = st.text_input(get_text("teacher_fio", current_lang), value="Teacher")
+    t_fio = st.text_input(get_text("teacher_fio", current_lang), value="Учитель")
     st.divider()
     st.markdown(f"### 👩‍💻 {get_text('auth_title', current_lang)}")
     st.info(f"**{AUTHOR_NAME}**")
@@ -142,19 +142,20 @@ with st.sidebar:
     with col2: st.markdown(f"[![WA](https://img.shields.io/badge/WA-25D366?logo=whatsapp&logoColor=white)]({WHATSAPP_URL})")
     st.caption(f"📞 {PHONE_NUMBER}")
     
-    # Кнопка диагностики моделей (поможет если 404 повторится)
-    if st.checkbox("Диагностика ИИ"):
-        try:
-            available_models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            st.write("Доступные модели:", available_models)
-        except:
-            st.write("Не удалось загрузить список моделей.")
+    # Кнопка диагностики моделей (скрыта по умолчанию)
+    with st.expander("🛠 Диагностика"):
+        if st.button("Проверить доступные модели"):
+            try:
+                models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                st.write(models)
+            except Exception as e:
+                st.write(f"Ошибка: {e}")
 
     if st.button(get_text("exit_btn", current_lang)):
         st.session_state['auth'] = False
         st.rerun()
 
-# --- 6. ФУНКЦИЯ WORD (ПОЛНАЯ ЛОГИКА ТАБЛИЦ) ---
+# --- 6. ФУНКЦИЯ WORD ---
 def clean_markdown(text):
     text = re.sub(r'[*_]{1,3}', '', text)
     text = re.sub(r'^#+\s*', '', text)
@@ -199,7 +200,6 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
             if cells: table_data.append(cells)
         else:
             if table_data:
-                # Рисуем таблицу
                 cols_count = len(table_data[0])
                 tbl = doc.add_table(rows=len(table_data), cols=cols_count)
                 tbl.style = 'Table Grid'
@@ -297,9 +297,9 @@ with t2:
     ic1, ic2 = st.columns(2)
     with ic1:
         i_name = st.text_input("Имя ученика / Оқушының аты:", key="i_n")
-        i_diag = st.text_input("Диагноз / Ерекшеліктері:", placeholder="Например: ЗПР, нарушение зрения", key="i_d")
+        i_diag = st.text_input("Диагноз / Ерекшеліктері:", placeholder="ЗПР, нарушение зрения...", key="i_d")
     with ic2:
-        i_topic = st.text_input("Тема (из первой вкладки):", value=m_topic, key="i_t")
+        i_topic = st.text_input("Тема:", value=m_topic, key="i_t")
         i_goals = st.text_area("Цели (упрощенные):", value=m_goals, height=100, key="i_g")
 
     if st.button("🧩 Адаптировать / Бейімдеу", type="primary", key="btn_t2"):
@@ -330,8 +330,8 @@ with t3:
         k_topic = st.text_input(get_text("topic_label", current_lang), key="k_t")
         k_vals = st.text_input("Ценности / Құндылықтар:", value="Патриотизм, еңбекқорлық", key="k_v")
 
-    k_om = st.text_area(get_text("goals_label", current_lang), placeholder="Код (например 5.1.2.1)...", key="k_om")
-    k_sm = st.text_area(get_text("ksp_goals", current_lang), placeholder="Все учащиеся смогут...", key="k_sm")
+    k_om = st.text_area(get_text("goals_label", current_lang), placeholder="Код ЦО...", key="k_om")
+    k_sm = st.text_area(get_text("ksp_goals", current_lang), placeholder="Цели урока...", key="k_sm")
     
     st.markdown("---")
     c_k1, c_k2 = st.columns(2)
@@ -351,9 +351,9 @@ with t3:
             inc_prompt = ""
             if use_inc:
                 inc_col_header = "| Адаптация (ООП)"
-                inc_prompt = f"В классе ученик с ООП ({k_inc_desc}). Добавь в таблицу столбец 'Адаптация' с упрощенными заданиями для него."
+                inc_prompt = f"В классе ученик с ООП ({k_inc_desc}). Добавь в таблицу столбец 'Адаптация' с упрощенными заданиями."
             
-            pisa_prompt = "Включи активные методы и задания PISA." if use_pisa_ksp else ""
+            pisa_prompt = "Включи задания PISA." if use_pisa_ksp else ""
 
             prompt = f"""
             Ты методист (Казахстан, приказ 130). {lang_instr}.
@@ -362,13 +362,10 @@ with t3:
             {inc_prompt}
             {pisa_prompt}
             
-            СТРУКТУРА ТАБЛИЦЫ (строго, используй Markdown таблицы):
+            СТРУКТУРА ТАБЛИЦЫ:
             Этап урока | Действия педагога | Действия ученика {inc_col_header} | Оценивание | Ресурсы
             
-            Этапы:
-            1. Начало.
-            2. Середина (Новая тема).
-            3. Конец (Рефлексия).
+            Разделы: Начало, Середина, Конец.
             """
             
             with st.spinner("Generating Plan..."):
