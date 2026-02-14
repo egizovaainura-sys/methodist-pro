@@ -91,7 +91,7 @@ def configure_ai():
     try:
         api_key = st.secrets["GOOGLE_API_KEY"]
         genai.configure(api_key=api_key)
-        return genai.GenerativeModel('gemini-1.5-flash'')
+        return genai.GenerativeModel('gemini-1.5-flash')
     except: return None
 
 # --- 4. ЛОГИКА ВХОДА ---
@@ -368,5 +368,6 @@ with t3:
 
 st.markdown("---")
 st.markdown(f"<center>{AUTHOR_NAME} © 2026</center>", unsafe_allow_html=True)
+
 
 
