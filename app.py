@@ -84,24 +84,20 @@ def check_access(user_phone):
         conn = st.connection("gsheets", type=GSheetsConnection)
         df = conn.read(spreadsheet=st.secrets["gsheet_url"], ttl=0)
         clean_input = ''.join(filter(str.isdigit, str(user_phone)))
-        # Номера во 2-й колонке (индекс 1)
         allowed_phones = df.iloc[:, 1].astype(str).str.replace(r'\D', '', regex=True).tolist()
         return clean_input in allowed_phones
     except Exception: 
         return False
 
-# Настройка ключа (берем из секретов Streamlit)
-if "GOOGLE_API_KEY" in st.secrets:
-    genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-else:
-    st.error("Ошибка: Добавьте GOOGLE_API_KEY в Settings -> Secrets на Streamlit Cloud")
-
-# Создание модели с проверкой
-def get_model():
-    # Попробуем версию 'gemini-1.5-flash', она самая быстрая и стабильная
-    return genai.GenerativeModel('gemini-1.5-flash')
-
-model = get_model()
+# ОПРЕДЕЛЕНИЕ ФУНКЦИИ НАСТРОЙКИ ИИ (Чтобы не было NameError)
+def configure_ai():
+    if "GOOGLE_API_KEY" in st.secrets:
+        genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+        # Используем gemini-1.5-flash — это решит проблему 404
+        return genai.GenerativeModel('gemini-1.5-flash')
+    else:
+        st.error("Критическая ошибка: GOOGLE_API_KEY не найден в Secrets!")
+        return None
 
 # --- 4. ЛОГИКА ВХОДА ---
 if 'lang' not in st.session_state: st.session_state['lang'] = 'RU'
@@ -126,6 +122,7 @@ if not st.session_state['auth']:
     st.caption(f"Dev: {AUTHOR_NAME}")
     st.stop()
 
+# Инициализируем модель ОДИН РАЗ после входа
 model = configure_ai()
 
 # --- 5. БОКОВАЯ ПАНЕЛЬ ---
@@ -141,12 +138,11 @@ with st.sidebar:
     with col2: st.markdown(f"[![WA](https://img.shields.io/badge/WA-25D366?logo=whatsapp&logoColor=white)]({WHATSAPP_URL})")
     st.caption(f"📞 {PHONE_NUMBER}")
     
-    # Кнопка диагностики моделей (скрыта по умолчанию)
     with st.expander("🛠 Диагностика"):
         if st.button("Проверить доступные модели"):
             try:
-                models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-                st.write(models)
+                models_list = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+                st.write(models_list)
             except Exception as e:
                 st.write(f"Ошибка: {e}")
 
@@ -154,7 +150,7 @@ with st.sidebar:
         st.session_state['auth'] = False
         st.rerun()
 
-# --- 6. ФУНКЦИЯ WORD ---
+# --- 6. ФУНКЦИИ WORD (СОХРАНЕНА ПОЛНАЯ ЛОГИКА) ---
 def clean_markdown(text):
     text = re.sub(r'[*_]{1,3}', '', text)
     text = re.sub(r'^#+\s*', '', text)
@@ -377,4 +373,3 @@ with t3:
 
 st.markdown("---")
 st.markdown(f"<center>{AUTHOR_NAME} © 2026</center>", unsafe_allow_html=True)
-
