@@ -93,7 +93,8 @@ def check_access(user_phone):
 # !!! ИСПРАВЛЕННАЯ ФУНКЦИЯ ПОДКЛЮЧЕНИЯ (Решает 404) !!!
 def configure_ai():
     try:
-        api_key = st.secrets.get("GOOGLE_API_KEY")
+        my_api_key = st.secrets.get("GOOGLE_API_KEY")
+        MODEL_NAME = 'gemini-flash-latest'
         if not api_key: return None
         genai.configure(api_key=api_key)
         # Используем имя модели, которое работает стабильно в 2026
@@ -377,3 +378,4 @@ with t3:
 
 st.markdown("---")
 st.markdown(f"<center>{AUTHOR_NAME} © 2026</center>", unsafe_allow_html=True)
+
