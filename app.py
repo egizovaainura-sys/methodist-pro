@@ -26,7 +26,6 @@ TRANS = {
     "login_btn": {"RU": "Войти", "KZ": "Кіру"},
     "access_denied": {"RU": "Доступ закрыт. Номер не найден.", "KZ": "Кіруге тыйым салынды. Нөмір табылмады."},
     "status_active": {"RU": "✅ Подписка PRO активна", "KZ": "✅ PRO жазылым белсенді"},
-    
     "teacher_fio": {"RU": "ФИО Учителя:", "KZ": "Мұғалімнің А.Т.Ә.:"},
     "date_label": {"RU": "Дата урока:", "KZ": "Сабақ күні:"},
     "subject_label": {"RU": "Предмет:", "KZ": "Пән:"},
@@ -38,27 +37,22 @@ TRANS = {
     "mat_type": {"RU": "Тип материала:", "KZ": "Материал түрі:"},
     "type_work": {"RU": "Рабочий лист", "KZ": "Жұмыс парағы"},
     "type_sor": {"RU": "БЖБ (СОР) / ТЖБ (СОЧ)", "KZ": "БЖБ (СОР) / ТЖБ (СОЧ)"},
-    
     "tab_class": {"RU": "📝 ЗАДАНИЯ (СОР/СОЧ)", "KZ": "📝 ТАПСЫРМАЛАР (БЖБ/ТЖБ)"},
     "tab_inc": {"RU": "👤 ИНКЛЮЗИЯ (Отдельно)", "KZ": "👤 ЕРЕКШЕ БІЛІМ (Жеке)"},
     "tab_ksp": {"RU": "📖 КСП (130 приказ)", "KZ": "📖 ҚМЖ (130-бұйрық)"},
-    
     "inc_check": {"RU": "Есть ученик с ООП (Инклюзия)?", "KZ": "Ерекше білім беру қажеттілігі бар оқушы бар ма?"},
-    "inc_diag": {"RU": "Диагноз/Особенности (для КСП):", "KZ": "Диагноз/Ерекшеліктері:"},
+    "inc_diag": {"RU": "Диагноз/Особенности:", "KZ": "Диагноз/Ерекшеліктері:"},
     "func_lit": {"RU": "🧠 Функциональная грамотность (PISA)", "KZ": "🧠 Функционалдық сауаттылық (PISA)"},
-    
     "btn_create": {"RU": "🚀 Создать материал", "KZ": "🚀 Материал жасау"},
     "download_btn": {"RU": "💾 СКАЧАТЬ WORD", "KZ": "💾 WORD ЖҮКТЕУ"},
-    "auth_title": {"RU": "Автор и разработчик", "KZ": "Автор және әзірлеуші"},
+    "preview": {"RU": "### Предпросмотр:", "KZ": "### Алдын ала қарау:"},
     "exit_btn": {"RU": "Выйти", "KZ": "Шығу"}
 }
 
 # --- ПОЛНЫЕ СПИСКИ ПРЕДМЕТОВ ---
 SUBJECTS_RU = [
-    "Русский язык (Я1 - родной)", 
-    "Русский язык (Я2 - второй)", 
-    "Казахский язык (Т1 - родной)", 
-    "Казахский язык (Т2 - второй)",
+    "Русский язык (Я1 - родной)", "Русский язык (Я2 - второй)", 
+    "Казахский язык (Т1 - родной)", "Казахский язык (Т2 - второй)",
     "Литературное чтение", "Обучение грамоте", "Букварь", "Ана тілі",
     "Математика", "Алгебра", "Геометрия", 
     "Естествознание", "Познание мира", 
@@ -70,10 +64,8 @@ SUBJECTS_RU = [
 ]
 
 SUBJECTS_KZ = [
-    "Орыс тілі (Я1 - орыс сыныптары)", 
-    "Орыс тілі (Я2 - қазақ сыныптары)", 
-    "Қазақ тілі (Т1 - қазақ сыныптары)", 
-    "Қазақ тілі (Т2 - орыс сыныптары)",
+    "Орыс тілі (Я1 - орыс сыныптары)", "Орыс тілі (Я2 - қазақ сыныптары)", 
+    "Қазақ тілі (Т1 - қазақ сыныптары)", "Қазақ тілі (Т2 - орыс сыныптары)",
     "Әдебиеттік оқу", "Сауат ашу", "Әліппе", "Ана тілі",
     "Математика", "Алгебра", "Геометрия", 
     "Жаратылыстану", "Дүниетану", 
@@ -115,13 +107,16 @@ with st.sidebar:
 
 if not st.session_state['auth']:
     st.title(get_text("login_title", current_lang))
+    st.markdown(get_text("login_prompt", current_lang))
     phone_input = st.text_input(get_text("phone_label", current_lang))
     if st.button(get_text("login_btn", current_lang)):
-        with st.spinner("Wait..."):
+        with st.spinner("Проверка..."):
             if check_access(phone_input):
                 st.session_state['auth'] = True
                 st.rerun()
             else: st.error(get_text("access_denied", current_lang))
+    st.divider()
+    st.caption(f"Dev: {AUTHOR_NAME}")
     st.stop()
 
 model = configure_ai()
@@ -142,7 +137,7 @@ with st.sidebar:
         st.session_state['auth'] = False
         st.rerun()
 
-# --- 6. ФУНКЦИИ WORD ---
+# --- 6. ФУНКЦИЯ WORD ---
 def clean_markdown(text):
     text = re.sub(r'[*_]{1,3}', '', text)
     text = re.sub(r'^#+\s*', '', text)
@@ -171,9 +166,15 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
 
     h = doc.add_heading(title.upper(), 0)
     h.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    for run in h.runs:
+        run.font.name = 'Times New Roman'
+        run.font.color.rgb = RGBColor(0,0,0)
+        run.font.size = Pt(14)
+        run.bold = True
     
     lines = ai_text.split('\n')
     table_data = []
+    
     for line in lines:
         stripped = line.strip()
         if stripped.startswith('|'):
@@ -182,21 +183,42 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
             if cells: table_data.append(cells)
         else:
             if table_data:
-                tbl = doc.add_table(rows=len(table_data), cols=len(table_data[0]))
+                # Рисуем таблицу
+                cols_count = len(table_data[0])
+                tbl = doc.add_table(rows=len(table_data), cols=cols_count)
                 tbl.style = 'Table Grid'
                 for i, row in enumerate(table_data):
+                    if len(row) != cols_count: continue
                     for j, val in enumerate(row):
-                        tbl.cell(i, j).text = clean_markdown(val)
+                        cell = tbl.cell(i, j)
+                        cell.text = clean_markdown(val)
+                        if i == 0: # Жирный заголовок
+                            for p in cell.paragraphs:
+                                for r in p.runs: r.font.bold = True
                 table_data = []
                 doc.add_paragraph()
-            if stripped:
-                p = doc.add_paragraph(clean_markdown(stripped))
-                if any(stripped.lower().startswith(x) for x in ["задание", "тапсырма", "этап", "кезең", "критерии", "дескриптор", "ресурсы", "ресурс"]):
-                    p.bold = True
-    
+            
+            clean_line = clean_markdown(stripped)
+            if clean_line:
+                p = doc.add_paragraph(clean_line)
+                # Жирный шрифт для ключевых слов
+                keywords = ["задание", "тапсырма", "этап", "кезең", "критерии", "дескриптор", "ресурсы", "ответы", "жауаптар"]
+                if any(clean_line.lower().startswith(x) for x in keywords):
+                    p.runs[0].bold = True
+
+    # Если таблица в конце
+    if table_data:
+        cols_count = len(table_data[0])
+        tbl = doc.add_table(rows=len(table_data), cols=cols_count)
+        tbl.style = 'Table Grid'
+        for i, row in enumerate(table_data):
+            if len(row) != cols_count: continue
+            for j, val in enumerate(row):
+                tbl.cell(i, j).text = clean_markdown(val)
+
     doc.add_paragraph("\n" + "_"*30)
     doc.add_paragraph(f"{'Мұғалім' if lang_code=='KZ' else 'Учитель'}: {teacher}")
-    doc.add_paragraph("Разработано в Methodist PRO")
+    doc.add_paragraph("Generated by Methodist PRO")
     
     buf = BytesIO()
     doc.save(buf)
@@ -206,17 +228,16 @@ def create_docx(ai_text, title, subj, gr, teacher, lang_code, date_str, is_ksp=F
 # --- 7. ЦЕНТРАЛЬНАЯ ПАНЕЛЬ ---
 st.title("🇰🇿 Methodist PRO")
 
-# ВЫБОР ДАТЫ
+# Глобальная дата
 c_d1, c_d2 = st.columns([1, 4])
 with c_d1:
     sel_date = st.date_input(get_text("date_label", current_lang), datetime.date.today())
     date_str = sel_date.strftime("%d.%m.%Y")
 
 t1, t2, t3 = st.tabs([get_text("tab_class", current_lang), get_text("tab_inc", current_lang), get_text("tab_ksp", current_lang)])
-
 subj_list = SUBJECTS_KZ if current_lang == "KZ" else SUBJECTS_RU
 
-# === ВКЛАДКА 1: СОР / СОЧ / РАБОЧИЕ ЛИСТЫ ===
+# === ВКЛАДКА 1: СОР/СОЧ/ЗАДАНИЯ ===
 with t1:
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -227,32 +248,26 @@ with t1:
         m_type = st.radio(get_text("mat_type", current_lang), [get_text("type_work", current_lang), get_text("type_sor", current_lang)], key="t1_type")
     with c3:
         m_score = st.number_input(get_text("score_label", current_lang), 1, 80, 10, key="t1_sc")
+        # ГАЛОЧКА PISA
+        use_pisa = st.checkbox(get_text("func_lit", current_lang), key="t1_pisa")
         
     m_goals = st.text_area(get_text("goals_label", current_lang), height=100, key="t1_gl")
-    
-    # ГАЛОЧКА ФУНКЦИОНАЛЬНОЙ ГРАМОТНОСТИ
-    use_pisa = st.checkbox(get_text("func_lit", current_lang), key="t1_pisa")
 
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_t1"):
-        if not m_goals.strip(): st.warning("No goals")
+        if not m_goals.strip(): st.warning("Нет целей!")
         else:
             lang_instr = "Пиши на КАЗАХСКОМ языке" if current_lang == "KZ" else "Пиши на РУССКОМ языке"
-            
-            # Доп. инструкция для PISA
-            pisa_prompt = ""
-            if use_pisa:
-                pisa_prompt = "ОБЯЗАТЕЛЬНО включи задания на функциональную грамотность (жизненные ситуации, PISA, критическое мышление)."
+            pisa_instr = "Включи задания на функциональную грамотность (PISA)." if use_pisa else ""
             
             prompt = f"""
             Ты методист. {lang_instr}.
             Создай: {m_type}. Предмет: {m_subj}. Класс: {m_grade}. Тема: {m_topic}.
             Цели: {m_goals}. Макс балл: {m_score}.
-            
-            {pisa_prompt}
+            {pisa_instr}
             
             СТРУКТУРА:
-            1. Задания разного уровня сложности.
-            2. Таблица: "Критерии оценивания" и "Дескрипторы".
+            1. Задания разного уровня (A, B, C).
+            2. ОБЯЗАТЕЛЬНО Таблица: "Критерии оценивания" и "Дескрипторы" (баллы).
             3. Ответы.
             """
             with st.spinner("Generating..."):
@@ -263,9 +278,9 @@ with t1:
                     st.download_button(get_text("download_btn", current_lang), doc, file_name=f"Task_{m_topic}.docx")
                 except Exception as e: st.error(f"Error: {e}")
 
-# === ВКЛАДКА 2: ИНКЛЮЗИЯ (ОТДЕЛЬНО) ===
+# === ВКЛАДКА 2: ИНКЛЮЗИЯ ===
 with t2:
-    st.info("Адаптация для особых образовательных потребностей (ООП)")
+    st.info("Адаптация для ООП")
     ic1, ic2 = st.columns(2)
     with ic1:
         i_name = st.text_input("Имя ученика / Оқушының аты:", key="i_n")
@@ -275,13 +290,13 @@ with t2:
         i_goals = st.text_area("Цели (упрощенные):", value=m_goals, height=100, key="i_g")
 
     if st.button("🧩 Адаптировать / Бейімдеу", type="primary", key="btn_t2"):
-        if not i_goals: st.warning("No goals")
+        if not i_goals: st.warning("Нет целей!")
         else:
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
             prompt = f"""
             Ты дефектолог. {lang_instr}.
-            Адаптируй задания по теме '{i_topic}' для ученика: {i_name}. Диагноз: {i_diag}.
-            Цели: {i_goals}. Сделай задания проще.
+            Адаптируй задания темы '{i_topic}' для ученика: {i_name}. Диагноз: {i_diag}.
+            Цели: {i_goals}. Сделай задания проще, короче, понятнее.
             """
             with st.spinner("Adapting..."):
                 try:
@@ -291,64 +306,60 @@ with t2:
                     st.download_button(get_text("download_btn", current_lang), doc, file_name=f"Inc_{i_name}.docx")
                 except Exception as e: st.error(f"Error: {e}")
 
-# === ВКЛАДКА 3: КСП (130 ПРИКАЗ + ИНКЛЮЗИЯ + PISA) ===
+# === ВКЛАДКА 3: КСП (130 ПРИКАЗ) ===
 with t3:
-    st.subheader(get_text("tab_ksp", current_lang))
     k1, k2 = st.columns(2)
     with k1:
         k_subj = st.selectbox(get_text("subject_label", current_lang), subj_list, key="k_s")
         k_grade = st.selectbox(get_text("grade_label", current_lang), [str(i) for i in range(1, 12)], key="k_g")
     with k2:
         k_topic = st.text_input(get_text("topic_label", current_lang), key="k_t")
-        k_vals = st.text_input("Ценности / Құндылықтар:", value="Патриотизм", key="k_v")
+        k_vals = st.text_input("Ценности / Құндылықтар:", value="Патриотизм, еңбекқорлық", key="k_v")
 
     k_om = st.text_area(get_text("goals_label", current_lang), placeholder="Код (например 5.1.2.1)...", key="k_om")
     k_sm = st.text_area(get_text("ksp_goals", current_lang), placeholder="Все учащиеся смогут...", key="k_sm")
     
-    # --- НАСТРОЙКИ КСП ---
     st.markdown("---")
-    col_ksp1, col_ksp2 = st.columns(2)
-    with col_ksp1:
+    c_k1, c_k2 = st.columns(2)
+    with c_k1:
+        # ИНКЛЮЗИЯ В КСП
         use_inc = st.checkbox(get_text("inc_check", current_lang), key="k_inc_check")
-    with col_ksp2:
-        use_pisa_ksp = st.checkbox(get_text("func_lit", current_lang), key="k_pisa")
-        
-    k_inc_desc = ""
-    if use_inc:
-        k_inc_desc = st.text_input(get_text("inc_diag", current_lang), placeholder="Пример: Ученик А (ЗПР) - упрощенные задания", key="k_inc_input")
+        if use_inc:
+            k_inc_desc = st.text_input(get_text("inc_diag", current_lang), placeholder="Пример: ЗПР", key="k_inc_inp")
+    with c_k2:
+        # PISA В КСП
+        use_pisa_ksp = st.checkbox(get_text("func_lit", current_lang) + " (в КСП)", key="k_pisa_ksp")
 
     if st.button(get_text("btn_create", current_lang), type="primary", key="btn_ksp"):
-        if not k_om.strip(): st.warning("No goals")
+        if not k_om.strip(): st.warning("Нет целей!")
         else:
             lang_instr = "Пиши на КАЗАХСКОМ" if current_lang == "KZ" else "Пиши на РУССКОМ"
             
-            # Инклюзия
-            inc_instruction = ""
-            inc_column = ""
+            # Формируем структуру таблицы
+            inc_col_header = ""
+            inc_prompt = ""
             if use_inc:
-                inc_instruction = f"В классе есть ученик с ООП: {k_inc_desc}. Для него ОБЯЗАТЕЛЬНО добавь отдельный столбец в таблицу с адаптированным заданием."
-                inc_column = "| Адаптация для ООП (Инклюзия)"
+                inc_col_header = "| Адаптация (ООП)"
+                inc_prompt = f"В классе ученик с ООП ({k_inc_desc}). Добавь в таблицу столбец 'Адаптация' с упрощенными заданиями для него."
             
-            # PISA
-            pisa_instruction = ""
-            if use_pisa_ksp:
-                pisa_instruction = "Включи в активные методы обучения задания на функциональную грамотность (PISA)."
+            pisa_prompt = "Включи активные методы и задания PISA." if use_pisa_ksp else ""
 
             prompt = f"""
             Ты методист (Казахстан, приказ 130). {lang_instr}.
             Составь КСП. Предмет: {k_subj}. Класс: {k_grade}. Тема: {k_topic}.
             ЦО: {k_om}. Цели урока: {k_sm}. Ценности: {k_vals}.
-            {inc_instruction}
-            {pisa_instruction}
+            {inc_prompt}
+            {pisa_prompt}
             
-            СТРУКТУРА ТАБЛИЦЫ (строго):
-            Этап урока | Действия педагога | Действия ученика {inc_column} | Оценивание | Ресурсы
+            СТРУКТУРА ТАБЛИЦЫ (строго, используй Markdown таблицы):
+            Этап урока | Действия педагога | Действия ученика {inc_col_header} | Оценивание | Ресурсы
             
             Этапы:
-            1. Начало (Орг. момент).
-            2. Середина (Новая тема, Практика).
+            1. Начало.
+            2. Середина (Новая тема).
             3. Конец (Рефлексия).
             """
+            
             with st.spinner("Generating Plan..."):
                 try:
                     res = model.generate_content(prompt)
@@ -358,4 +369,4 @@ with t3:
                 except Exception as e: st.error(f"Error: {e}")
 
 st.markdown("---")
-st.markdown(f"<center><b>{AUTHOR_NAME}</b> © 2026 | {INSTAGRAM_HANDLE}</center>", unsafe_allow_html=True)
+st.markdown(f"<center>{AUTHOR_NAME} © 2026</center>", unsafe_allow_html=True)
